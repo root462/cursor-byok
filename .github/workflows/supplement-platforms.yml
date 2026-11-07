@@ -8,9 +8,9 @@ on:
         required: true
         default: "1.0.2"
       source_commit:
-        description: Full source commit SHA already contained in main
+        description: Full source commit SHA already contained in master
         required: true
-        default: "c52e8eb0d47cd5693de0ad6a9277dcd08ab79c3e"
+        default: "70249f964bf8bf7b9e48fbb4cb3989bea5604bdc"
 
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
           assert re.fullmatch(r"\d+\.\d+\.\d+", version), "Invalid version"
           assert re.fullmatch(r"[0-9a-f]{40}", source), "A full commit SHA is required"
           assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == source
-          subprocess.run(["git", "merge-base", "--is-ancestor", source, "origin/main"], check=True)
+          subprocess.run(["git", "merge-base", "--is-ancestor", source, "origin/master"], check=True)
           package = json.loads(Path("apps/desktop/package.json").read_text())
           config = json.loads(Path("apps/desktop/src-tauri/tauri.conf.json").read_text())
           cargo = re.search(r'^version = "([^"]+)"', Path("apps/desktop/src-tauri/Cargo.toml").read_text(), re.M)

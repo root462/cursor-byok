@@ -55,9 +55,9 @@ jobs:
           test "${version}" = "${cargo_version}"
           test "${GITHUB_REF_TYPE}" = "tag"
           test "${GITHUB_REF_NAME}" = "v${version}"
-          git fetch origin main:refs/remotes/origin/main
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
-            echo "Release tag must point to a commit contained in origin/main" >&2
+          git fetch origin master:refs/remotes/origin/master
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/master; then
+            echo "Release tag must point to a commit contained in origin/master" >&2
             exit 1
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
