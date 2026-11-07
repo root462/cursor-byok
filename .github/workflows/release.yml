@@ -158,28 +158,6 @@ jobs:
           mkdir -p legacy-update
           tar -czf "legacy-update/cursor-byok-${VERSION}-linux-amd64.tar.gz" -C target/release cursor-byok-desktop
 
-      - name: Package and sign legacy Windows updater asset
-        if: matrix.platform == 'windows-x86_64'
-        shell: pwsh
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          New-Item -ItemType Directory -Force legacy-update | Out-Null
-          $asset = "legacy-update/cursor-byok-$env:VERSION-windows-amd64.zip"
-          Compress-Archive -LiteralPath target/release/cursor-byok-desktop.exe -DestinationPath $asset
-          Push-Location apps/desktop
-          npm exec tauri signer sign -- "../../$asset"
-          Pop-Location
-          $entries = @(tar -tf $asset)
-          if ($entries.Count -ne 1 -or [System.IO.Path]::GetFileName($entries[0]) -ne 'cursor-byok-desktop.exe') {
-            throw "Windows updater archive must contain only cursor-byok-desktop.exe"
-          }
-          if (!(Test-Path "$asset.sig")) {
-            throw "Windows updater archive signature was not generated"
-          }
-
       - name: Package legacy macOS updater asset
         if: contains(matrix.platform, 'macos')
         shell: bash
@@ -194,6 +172,20 @@ jobs:
             legacy_platform=macos-amd64
           fi
           cp "${archive}" "legacy-update/cursor-byok-${VERSION}-${legacy_platform}.tar.gz"
+
+      - name: Package Windows installer for release
+        if: matrix.platform == 'windows-x86_64'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force legacy-update | Out-Null
+          $installer = Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer was not produced" }
+          Copy-Item $installer.FullName "legacy-update/cursor-byok-$env:VERSION-windows-x64-setup.exe"
+          $signature = "$($installer.FullName).sig"
+          if (-not (Test-Path $signature)) { throw "Installer signature was not generated" }
+          Copy-Item $signature "legacy-update/cursor-byok-$env:VERSION-windows-x64-setup.exe.sig"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -214,31 +206,6 @@ jobs:
           pattern: legacy-update-*
           path: legacy-update
           merge-multiple: true
-
-      - name: Generate legacy update manifest
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          node .github/scripts/generate-legacy-update.mjs \
-            --version "${VERSION}" \
-            --repository "${GITHUB_REPOSITORY}" \
-            --assets-dir legacy-update \
-            --output legacy-update/update.json \
-            --notes "Cursor BYOK v${VERSION}"
-
-      - name: Generate signed Windows portable update manifest
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          asset="cursor-byok-${VERSION}-windows-amd64.zip"
-          test -f "legacy-update/${asset}"
-          test -f "legacy-update/${asset}.sig"
-          node .github/scripts/generate-portable-update.mjs \
-            --version "${VERSION}" \
-            --repository "${GITHUB_REPOSITORY}" \
-            --asset "${asset}" \
-            --signature "legacy-update/${asset}.sig" \
-            --output legacy-update/portable-latest.json
 
       - name: Normalize Tauri updater download URLs
         env:
@@ -270,7 +237,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: gh release upload "v${VERSION}" tauri-update/latest.json --clobber
 
-      - name: Upload legacy updater assets
+      - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}

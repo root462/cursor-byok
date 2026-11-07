@@ -1,5 +1,5 @@
 import { getVersion, setDockVisibility } from "@tauri-apps/api/app";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -52,21 +52,7 @@ export type AppUpdate = {
   close(): Promise<void>;
 };
 
-type PortableUpdateInfo = {
-  version: string;
-};
-
 export async function checkForUpdate(): Promise<AppUpdate | null> {
-  if (desktopPlatform() === "windows") {
-    const update = await invoke<PortableUpdateInfo | null>("check_portable_update");
-    if (!update) return null;
-    return {
-      version: update.version,
-      install: () => invoke("install_portable_update", { expectedVersion: update.version }),
-      close: async () => {},
-    };
-  }
-
   const update: Update | null = await check();
   if (!update) return null;
   return {
