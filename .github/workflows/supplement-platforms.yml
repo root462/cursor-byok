@@ -1,0 +1,202 @@
+name: Supplement desktop installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release version, without v
+        required: true
+        default: "1.0.2"
+      source_commit:
+        description: Full source commit SHA already contained in main
+        required: true
+        default: "c52e8eb0d47cd5693de0ad6a9277dcd08ab79c3e"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supplement-desktop-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    if: github.actor == github.repository_owner
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+          - platform: macos-aarch64
+            os: macos-15
+            target: aarch64-apple-darwin
+            bundles: dmg,app
+          - platform: macos-x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: dmg,app
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+
+      - name: Verify source, version, and existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          version = os.environ["VERSION"]
+          source = os.environ["SOURCE_COMMIT"]
+          assert re.fullmatch(r"\d+\.\d+\.\d+", version), "Invalid version"
+          assert re.fullmatch(r"[0-9a-f]{40}", source), "A full commit SHA is required"
+          assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == source
+          subprocess.run(["git", "merge-base", "--is-ancestor", source, "origin/main"], check=True)
+          package = json.loads(Path("apps/desktop/package.json").read_text())
+          config = json.loads(Path("apps/desktop/src-tauri/tauri.conf.json").read_text())
+          cargo = re.search(r'^version = "([^"]+)"', Path("apps/desktop/src-tauri/Cargo.toml").read_text(), re.M)
+          assert package["version"] == config["version"] == cargo.group(1) == version
+          expected = "https://github.com/" + os.environ["GITHUB_REPOSITORY"] + "/releases/latest/download/latest.json"
+          assert config["plugins"]["updater"]["endpoints"] == [expected]
+          release = json.loads(subprocess.check_output(["gh", "release", "view", "v" + version, "--repo", os.environ["GITHUB_REPOSITORY"], "--json", "isDraft,tagName"]))
+          assert not release["isDraft"] and release["tagName"] == "v" + version
+          PY
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux-x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install frontend dependencies and check types
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run typecheck
+          npm run typecheck:node
+
+      - name: Build signed updater artifacts and installers
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos-') && '-' || '' }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: npm run tauri:build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Collect installers and platform checksums
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, shutil
+          from pathlib import Path
+          bundle = Path("target") / os.environ["TARGET"] / "release/bundle"
+          output = Path("platform-assets")
+          output.mkdir()
+          platform = os.environ["PLATFORM"]
+          patterns = ["*.deb", "*.AppImage", "*.AppImage.sig"] if platform.startswith("linux-") else ["*.dmg", "*.app.tar.gz", "*.app.tar.gz.sig"]
+          files = []
+          for pattern in patterns:
+              matches = sorted(bundle.rglob(pattern))
+              assert matches, "Missing bundle: " + pattern
+              for path in matches:
+                  destination = output / (platform + "-" + path.name.replace(" ", "."))
+                  assert not destination.exists(), "Duplicate asset name"
+                  shutil.copy2(path, destination)
+                  files.append(destination)
+          lines = []
+          for path in sorted(files):
+              digest = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for block in iter(lambda: stream.read(1024 * 1024), b""):
+                      digest.update(block)
+              lines.append(digest.hexdigest() + "  " + path.name)
+          (output / ("SHA256SUMS-" + platform + ".txt")).write_text("\n".join(lines) + "\n")
+          (output / ("BUILD-" + platform + ".txt")).write_text(
+              "version=" + os.environ["VERSION"] + "\n"
+              + "source_commit=" + os.environ["SOURCE_COMMIT"] + "\n"
+              + "platform=" + platform + "\n"
+              + "workflow_run=https://github.com/" + os.environ["GITHUB_REPOSITORY"]
+              + "/actions/runs/" + os.environ["GITHUB_RUN_ID"] + "\n"
+          )
+          print("\n".join(path.name for path in sorted(output.iterdir())))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}
+          path: platform-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  upload:
+    name: Add installers to existing release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: platform-assets
+          merge-multiple: true
+
+      - name: Verify checksums and upload without replacing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          folder = Path("platform-assets")
+          checksums = sorted(folder.glob("SHA256SUMS-*.txt"))
+          assert len(checksums) == 3, "All three platform builds are required"
+          for checksum in checksums:
+              for line in checksum.read_text().splitlines():
+                  digest, name = line.split("  ", 1)
+                  path = folder / name
+                  assert path.parent == folder and path.is_file()
+                  actual = hashlib.sha256(path.read_bytes()).hexdigest()
+                  assert actual == digest, "Checksum mismatch: " + name
+          tag = "v" + os.environ["VERSION"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          release = json.loads(subprocess.check_output(["gh", "release", "view", tag, "--repo", repo, "--json", "isDraft,assets"]))
+          assert not release["isDraft"]
+          existing = {asset["name"] for asset in release["assets"]}
+          paths = sorted(folder.iterdir())
+          assert not existing.intersection(path.name for path in paths), "Refusing to overwrite existing release assets"
+          subprocess.run(["gh", "release", "upload", tag, "--repo", repo, *map(str, paths)], check=True)
+          PY
