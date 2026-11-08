@@ -68,3 +68,17 @@ export async function checkForUpdate(): Promise<AppUpdate | null> {
 export async function installUpdate(update: AppUpdate): Promise<void> {
   await update.install();
 }
+
+/**
+ * The updater surfaces transport failures verbatim in English
+ * ("Could not fetch a valid release JSON from the remote"), which tells the
+ * user nothing actionable. Map the known unreachable-server shapes to a single
+ * hint and keep every other message as-is.
+ */
+export function describeUpdateError(cause: unknown): string {
+  const raw = cause instanceof Error ? cause.message : String(cause);
+  const unreachable = /release JSON|failed to fetch|network|dns|timed? ?out|timeout|connection|connect/i.test(raw);
+  return unreachable
+    ? t("无法连接更新服务器，请检查网络或代理后重试")
+    : t("检查更新失败：{error}", { error: raw });
+}
