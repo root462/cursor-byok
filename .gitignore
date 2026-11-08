@@ -1,5 +1,7 @@
 claude-server.tar
 .DS_Store
+.idea/
+.workbuddy/
 dist
 .task
 /local-docs/
