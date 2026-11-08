@@ -12,11 +12,13 @@ fn main() {
         protoc_bin_vendored::protoc_bin_path().expect("vendored protoc"),
     );
 
+    let protoc_proto_dir = ascii_proto_dir(&proto_dir);
+
     prost_build::Config::new()
         .compile_protos(
-            &protos,
+            &[protoc_proto_dir.join("agent_v1.proto")],
             &[
-                proto_dir.clone(),
+                protoc_proto_dir,
                 protoc_bin_vendored::include_path().expect("vendored protobuf includes"),
             ],
         )
@@ -51,4 +53,23 @@ fn main() {
     // compiling that entire package would generate invalid Rust. `cursor/proto.rs` defines only
     // the validated Bidi and ErrorDetails wire subsets; agent_v1.proto remains fully generated.
     println!("cargo:rerun-if-changed={}", aiserver_proto.display());
+}
+
+/// protoc cannot open paths containing non-ASCII characters on Windows, and the workspace
+/// may live under such a directory. Mirror the proto sources into an ASCII build directory
+/// and compile from there.
+fn ascii_proto_dir(proto_dir: &std::path::Path) -> PathBuf {
+    let staging = std::env::temp_dir().join("cursor-byok-protos");
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).expect("create proto staging directory");
+    for entry in std::fs::read_dir(proto_dir).expect("read proto directory") {
+        let entry = entry.expect("proto directory entry");
+        if entry.path().extension().and_then(|ext| ext.to_str()) != Some("proto") {
+            continue;
+        }
+        std::fs::copy(entry.path(), staging.join(entry.file_name()))
+            .expect("copy proto into staging directory");
+    }
+    println!("cargo:rerun-if-changed={}", proto_dir.display());
+    staging
 }
