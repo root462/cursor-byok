@@ -133,6 +133,17 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
+      # tauri-bundler pulls NSIS / AppRun / linuxdeploy from
+      # github.com/<owner>/<repo>/releases/download/... on first use. That
+      # endpoint intermittently answers 504 and the bundler does not retry, so
+      # the bundle step fails after the Rust build already succeeded. Seed the
+      # cache through the API instead; the bundler then never hits the network.
+      - name: Seed bundler tools through the GitHub API
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/seed-bundler-tools.mjs
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
