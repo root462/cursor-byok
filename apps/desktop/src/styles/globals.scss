@@ -49,6 +49,31 @@ body,
   overflow: hidden;
 }
 
+/* 底图：与官方 demo 同一个 Harmony.jpg，铺满视口并固定。
+   玻璃要滤的正是这张图，纯色底上做不出液态折射。
+
+   注意：这里必须用固定定位的图层，不能用 background-attachment: fixed。
+   后者会被提升到独立合成层，backdrop-filter 采样不到，玻璃背后等价于透明，
+   面板就退化成一块死白。 */
+body::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--app-backdrop-veil, transparent), var(--app-backdrop-veil, transparent)),
+    /* 原图左侧与上方是大片纯白，侧栏整块坐在白底上，玻璃透不出任何东西。
+       这两个光斑只落在左侧栏一带，给玻璃一点可折射的底色。 */
+    radial-gradient(42% 40% at 8% 26%, rgba(255, 176, 200, 0.62) 0%, rgba(255, 176, 200, 0) 72%),
+    radial-gradient(38% 40% at 10% 74%, rgba(180, 206, 255, 0.55) 0%, rgba(180, 206, 255, 0) 72%),
+    radial-gradient(52% 46% at 96% 6%, rgba(200, 222, 255, 0.45) 0%, rgba(200, 222, 255, 0) 72%),
+    url("../assets/Harmony.jpg");
+  background-repeat: no-repeat;
+  background-size: auto, auto, auto, auto 130%;
+  background-position: center, center, center, center 78%;
+  pointer-events: none;
+}
+
 button,
 input,
 select {
@@ -94,3 +119,7 @@ button {
     transparent 100%
   );
 }
+
+/* 液态玻璃的全部外观由 liquid-glass.css 提供（index.html 的 link 引入）。
+   组件需要玻璃表面时用 `composes: liquid from global;` 复用 .liquid，
+   本项目不再提供任何并行的玻璃样式实现。 */

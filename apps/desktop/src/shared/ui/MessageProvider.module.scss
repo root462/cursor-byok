@@ -14,12 +14,13 @@
 
 .message {
   max-width: min(520px, calc(100vw - 32px));
-  padding: 10px 16px;
+  // 轻提示与 Tooltip 同材质：玻璃外观来自 .liquid。
+  composes: liquid from global;
+  --liquid-radius: var(--oa-overlay-radius);
+  --liquid-padding: 10px 16px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
   color: var(--vscode-notifications-foreground);
-  background: var(--vscode-notifications-background);
-  border: 1px solid var(--vscode-notifications-border);
-  border-radius: var(--oa-overlay-radius);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 38%);
   font-size: type.$font-size-base;
   line-height: 20px;
   text-align: center;

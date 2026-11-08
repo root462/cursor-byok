@@ -1,0 +1,90 @@
+@use "../../styles/typography" as type;
+
+.menu {
+  composes: liquid from global;
+  --liquid-radius: 8px;
+  --liquid-padding: 0;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  --liquid-bg: color-mix(in srgb, var(--vscode-dropdown-background) 88%, transparent);
+  position: fixed;
+  z-index: 14000;
+  width: 214px;
+  max-height: min(56vh, 420px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  overflow: hidden;
+}
+
+.header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px 7px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  border-bottom: 1px solid var(--vscode-sideBar-border);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  scrollbar-width: thin;
+
+  .item {
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+
+    label {
+      width: 100%;
+      padding: 5px 7px;
+      color: var(--vscode-dropdown-foreground);
+    }
+  }
+}
+
+.footer {
+  flex: 0 0 auto;
+  padding: 4px;
+  border-top: 1px solid var(--vscode-sideBar-border);
+}
+
+.reset {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--vscode-dropdown-foreground);
+  font-size: type.$font-size-xs;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+
+  &:hover:not(:disabled) {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+  }
+
+  &:disabled {
+    color: var(--vscode-descriptionForeground);
+    cursor: default;
+  }
+}
+
+.openIcon {
+  transform: rotate(180deg);
+}

@@ -26,7 +26,7 @@ export type AppSnapshot = {
 
 const savedTheme = (): ThemeId => {
   const saved = localStorage.getItem("cursor-byok.theme");
-  return isThemeId(saved) ? saved : "default-dark";
+  return isThemeId(saved) ? saved : "default-light";
 };
 
 let snapshot: AppSnapshot = {

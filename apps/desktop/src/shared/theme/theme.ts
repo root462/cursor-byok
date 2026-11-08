@@ -1,8 +1,9 @@
-export const themeIds = ["default-dark", "default-light"] as const;
+// 应用只提供亮色主题：液态玻璃是为浅色底图设计的。深色分支已移除，
+// isThemeId 会拒绝历史存下的 "default-dark"，自动回落到亮色。
+export const themeIds = ["default-light"] as const;
 export type ThemeId = (typeof themeIds)[number];
 
 export const themeOptions = [
-  { id: "default-dark" },
   { id: "default-light" },
 ] satisfies { id: ThemeId }[];
 

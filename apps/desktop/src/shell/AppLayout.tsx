@@ -68,13 +68,17 @@ export function AppLayout() {
     </Card>
     <main className={styles.content}>
       <div className={styles.actionRegion}>
-        <Card className={styles.actions}>
+        {/* 这里不能用 Card：Card 的 .root 声明了 padding: 0，和 .liquid 的
+            padding: var(--liquid-padding) 同属单类选择器，谁在样式表后面谁赢。
+            打包后 Card 的规则在后，工具条的内边距会被清零，端头元素就贴住玻璃边缘。
+            .actions 自己就 composes 了 liquid，用裸 div 才是唯一可靠的形态。 */}
+        <div className={styles.actions}>
           <div ref={setLeftActionTarget} className={styles.pageActions} />
           {location.pathname !== "/" && <TooltipTrigger label={t("刷新")}><button className={controls.iconButton} aria-label={t("刷新")} disabled={busy} onClick={() => void appStore.refresh()}>
             <Icon className={busy ? controls.spin : ""} icon={refreshIcon} size="1.1em" />
           </button></TooltipTrigger>}
           <div ref={setRightActionTarget} className={styles.pageActions} />
-        </Card>
+        </div>
       </div>
       <PageActionsTarget.Provider value={{ left: leftActionTarget, right: rightActionTarget }}>
         <KeepAliveRouteOutlet

@@ -308,15 +308,18 @@ export function CursorSettingsPage() {
             }}
           />
         </TooltipTrigger>
-        {testTargets.length > 0 && <div className={styles.groupActions} role="group" aria-label={t("操作")}>
-          <button type="button" aria-pressed={grouping === "flat"} onClick={() => setGrouping("flat")}>{t("默认平铺")}</button>
-          {canGroupByProvider && <button type="button" aria-pressed={grouping === "provider"} onClick={() => setGrouping("provider")}>{t("按供应商")}</button>}
-          {canGroupByType && <button type="button" aria-pressed={grouping === "type"} onClick={() => setGrouping("type")}>{t("按类型")}</button>}
-          <button type="button" disabled={cursorBusy || (!batchTesting && testingModelHashes.size > 0)} onClick={() => void (batchTesting ? cancelAllModelTests() : testAllModels())}>{batchTesting ? t("取消全部测试") : t("一键测试")}</button>
-        </div>}
+        {testTargets.length > 0 && <>
+          <span className={styles.actionDivider} aria-hidden="true" />
+          <div className={styles.groupActions} role="group" aria-label={t("操作")}>
+            <button type="button" aria-pressed={grouping === "flat"} onClick={() => setGrouping("flat")}>{t("默认平铺")}</button>
+            {canGroupByProvider && <button type="button" aria-pressed={grouping === "provider"} onClick={() => setGrouping("provider")}>{t("按供应商")}</button>}
+            {canGroupByType && <button type="button" aria-pressed={grouping === "type"} onClick={() => setGrouping("type")}>{t("按类型")}</button>}
+          </div>
+          <button className={styles.batchAction} type="button" disabled={cursorBusy || (!batchTesting && testingModelHashes.size > 0)} onClick={() => void (batchTesting ? cancelAllModelTests() : testAllModels())}>{batchTesting ? t("取消全部测试") : t("一键测试")}</button>
+        </>}
       </div>
     </PageActions>
-    <PageActions><TooltipTrigger label={caReady ? t("添加模型") : t("请先初始化 CA")}><button className={controls.iconButton} aria-label={t("添加模型")} disabled={!caReady || cursorBusy} onClick={openNew}><Icon icon={addIcon} size="1.1em" /></button></TooltipTrigger></PageActions>
+    <PageActions><TooltipTrigger label={caReady ? t("添加模型") : t("请先初始化 CA")}><button className={`${controls.iconButton} ${styles.toolbarIcon}`} aria-label={t("添加模型")} disabled={!caReady || cursorBusy} onClick={openNew}><Icon icon={addIcon} size="1.1em" /></button></TooltipTrigger></PageActions>
     <PageContent title="Cursor" sections={[
       { key: "cursor-settings", estimatedHeight: estimatedModelHeight + (hasRuntimeMismatch ? 280 : 0), content },
     ]} />

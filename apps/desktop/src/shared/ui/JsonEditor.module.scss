@@ -30,10 +30,12 @@
   align-items: center;
   justify-content: center;
   color: var(--vscode-descriptionForeground);
-  background: var(--vscode-editorWidget-background);
-  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-input-border));
-  border-radius: 5px;
-  box-shadow: 0 2px 6px color-mix(in srgb, #000 22%, transparent);
+  // 浮动小工具条：玻璃外观来自 .liquid，按工具条尺寸覆写内边距。
+  composes: liquid from global;
+  --liquid-radius: 5px;
+  --liquid-padding: 0;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
 }
 
 .formatButton {

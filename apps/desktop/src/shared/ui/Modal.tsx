@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ScrollableContent } from "../virtual/ScrollableContent";
 import controls from "./Controls.module.scss";
@@ -39,6 +39,9 @@ function focusableElements(root: HTMLElement) {
     .filter((element) => element.getClientRects().length > 0);
 }
 
+/** 与 Modal.module.scss 里 oa-dialog-out 的时长保持一致。 */
+const CLOSE_ANIMATION_MS = 170;
+
 export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), submitLabel = t("保存"), submitDisabled = false }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
@@ -47,6 +50,24 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
   const titleId = useId();
   closeRef.current = onClose;
   busyRef.current = Boolean(busy);
+  // open 由父组件持有，置 false 时不能立刻卸载，否则退场动画根本没机会播。
+  // 这里多留 render 一层：open=false 先切到 closing 播退场，播完再真正卸载。
+  const [render, setRender] = useState(open);
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setRender(true);
+      setClosing(false);
+      return;
+    }
+    if (!render) return;
+    setClosing(true);
+    const timer = window.setTimeout(() => {
+      setRender(false);
+      setClosing(false);
+    }, CLOSE_ANIMATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [open, render]);
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -87,8 +108,8 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
       if (previous && document.contains(previous)) previous.focus();
     };
   }, [initialFocus, open]);
-  if (!open) return null;
-  return createPortal(<div className={styles.mask}>
+  if (!render) return null;
+  return createPortal(<div className={styles.mask} data-state={closing ? "closing" : "open"}>
     <div className={styles.dragLayer} data-tauri-drag-region aria-hidden="true" />
     <div id={id} ref={dialog} className={[styles.dialog, wide && styles.wide, compact && styles.compact, fullHeight && styles.fullHeight].filter(Boolean).join(" ")} role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={ariaDescribedBy} tabIndex={-1}>
       <header id={titleId}>{title}</header>

@@ -1,5 +1,6 @@
 //! Exposes the local desktop application integration.
 mod account;
+mod app_info;
 mod ca;
 mod process;
 mod proxy;
@@ -17,6 +18,8 @@ use crate::{
 };
 
 use self::{ca::CaManager, proxy::ProxyRuntime};
+
+pub use app_info::{detect_cursor_app, CursorAppInfo};
 
 pub(crate) fn proxy_host_allowed(host: &str) -> bool {
     proxy::is_cursor_host(host)

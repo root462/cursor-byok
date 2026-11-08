@@ -7,13 +7,17 @@
 }
 
 .root {
+  composes: liquid from global;
+  --liquid-radius: var(--oa-card-radius);
+  --liquid-padding: 0;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
   width: 100%;
   height: 130px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
   overflow: hidden;
-  border: 1px solid var(--vscode-sideBar-border);
-  border-radius: var(--oa-overlay-radius);
   font-family: var(--oa-metrics-font);
 }
 

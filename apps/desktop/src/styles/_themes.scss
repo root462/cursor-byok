@@ -5,19 +5,22 @@
 }
 
 :root {
-  --oa-card-radius: 9px;
-  --oa-overlay-radius: 8px;
+  // 卡片统一走大圆角（原 9px 偏方正，和液态玻璃的柔和感不搭）。
+  --oa-card-radius: 16px;
+  --oa-overlay-radius: 12px;
 }
 
 :root:not([data-platform="macos"]) {
-  --oa-card-radius: 7px;
-  --oa-overlay-radius: 6px;
+  --oa-card-radius: 14px;
+  --oa-overlay-radius: 10px;
 }
 
 :root,
 :root[data-theme="default-dark"] {
   --oa-tooltip-shadow: 0 12px 32px rgb(0 0 0 / 30%);
   --oa-dropdown-shadow: 0 12px 28px rgb(0 0 0 / 38%);
+  // 底图上的压暗纱：压到深色玻璃可读，但保留图上色彩，不至于变回纯黑底。
+  --app-backdrop-veil: rgb(9 11 18 / 46%);
 
   @include vscode-theme((
     foreground: #ffffffe6,
@@ -68,6 +71,8 @@
 :root[data-theme="default-light"] {
   --oa-tooltip-shadow: 0 8px 22px rgb(0 0 0 / 12%);
   --oa-dropdown-shadow: 0 8px 20px rgb(0 0 0 / 14%);
+  // 浅色主题不再压白纱：原图本身够柔，再加白只会让白色玻璃面板失去对比。
+  --app-backdrop-veil: rgb(255 255 255 / 0%);
 
   @include vscode-theme((
     foreground: #191919,

@@ -1,36 +1,27 @@
 @use "../../../styles/typography" as type;
-
-.root,
-.presets {
-  display: flex;
-  align-items: center;
-}
-
-.filterRow { width: 100%; }
+@use "../../../styles/segmented" as segmented;
 
 .root {
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
 }
 
+.filterRow {
+  width: 100%;
+}
+
+// 分段预设控件：和 Cursor 页的分组切换同一套语言（浅灰槽 + 白色胶囊选中）。
+// 原来是自带玻璃的小方块，套在已经玻璃化的工具条里等于两层材质叠一起，
+// 选中态那块深色底也显得很重。
 .presets {
-  overflow: hidden;
-  // border: 1px solid var(--vscode-sideBar-border);
-  border-radius: 5px;
+  @include segmented.segmented;
+}
 
-  button {
-    height: 25px;
-    padding: 0 8px;
-    color: var(--vscode-descriptionForeground);
-    background: transparent;
-    border: 0;
-    border-right: 1px solid var(--vscode-sideBar-border);
-    font-size: type.$font-size-xs;
-    white-space: nowrap;
-
-    &:last-child { border-right: 0; }
-    &:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
-    &[aria-pressed="true"] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
-  }
+// 刷新按钮在槽外，跟随工具条做成圆形热区。
+.iconRound {
+  border-radius: 999px;
 }
 
 .popover {
@@ -38,14 +29,19 @@
   z-index: 14000;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 12px;
-  padding: 12px;
   color: var(--vscode-foreground);
-  background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
-  border-radius: var(--oa-overlay-radius);
-  box-shadow: var(--oa-dropdown-shadow);
   overflow: visible;
+  // 与 Select / ModelSelect / ActionMenu 的下拉同一材质：玻璃外观来自 .liquid。
+  composes: liquid from global;
+  --liquid-radius: var(--oa-card-radius);
+  --liquid-padding: 12px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  // 86% 白在磨砂生效后等于一块白板，压到 66% 才透出底图的色彩。
+  --liquid-bg: color-mix(in srgb, var(--vscode-dropdown-background) 66%, transparent);
 
   label {
     display: grid;

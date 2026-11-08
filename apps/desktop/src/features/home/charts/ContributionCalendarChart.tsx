@@ -99,6 +99,8 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
   const [axisLabels, setAxisLabels] = useState<AxisLabel[]>([]);
   const layout = useMemo(() => buildCalendarLayout(data, locale), [data, locale]);
   const tokenFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
+  const tokenFormatterRef = useRef(tokenFormatter);
+  tokenFormatterRef.current = tokenFormatter;
   layoutRef.current = layout;
 
   useLayoutEffect(() => {
@@ -110,7 +112,6 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
       renderer: "canvas",
       width: 1,
       height: 1,
-      useDirtyRect: true,
     });
 
     const handleMouseOver = (event: ElementEvent) => {
@@ -125,7 +126,7 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
       };
       showTooltip(anchor, undefined, <div className={styles.tooltipContent}>
         <strong>{extra.date}</strong>
-        <span>{t("Token 用量：{tokens}", { tokens: tokenFormatter.format(extra.tokens) })}</span>
+        <span>{t("Token 用量：{tokens}", { tokens: tokenFormatterRef.current.format(extra.tokens) })}</span>
       </div>);
     };
     const handleMouseOut = (event: ElementEvent) => {
@@ -137,14 +138,25 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
 
     const cellRects = new Map<string, Rect>();
     let drawFrame = 0;
+    let zeroWidthRetries = 0;
     let lastAvailableWidth = -1;
     let lastCanvasHeight = -1;
     let lastLayout: typeof layout = null;
+    let lastAxisSignature = "";
     const draw = () => {
       const currentLayout = layoutRef.current;
       if (!currentLayout) return;
       const availableWidth = Math.floor(scroller.getBoundingClientRect().width);
-      if (availableWidth <= 0 || (availableWidth === lastAvailableWidth && currentLayout === lastLayout)) return;
+      if (availableWidth <= 0) {
+        // 容器尚未完成布局（虚拟列表挂载首帧常见）：有限次重试，不要静默放弃。
+        if (zeroWidthRetries < 30) {
+          zeroWidthRetries += 1;
+          drawFrame = window.requestAnimationFrame(draw);
+        }
+        return;
+      }
+      zeroWidthRetries = 0;
+      if (availableWidth === lastAvailableWidth && currentLayout === lastLayout) return;
       const gapsWidth = (currentLayout.columnCount - 1) * CALENDAR_CONFIG.cellGap;
       const cellWidth = Math.max(0, (availableWidth - gapsWidth) / currentLayout.columnCount);
       const cellHeight = cellWidth / CALENDAR_CONFIG.cellAspectRatio;
@@ -162,9 +174,14 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
         lastLabelEnd = left + CALENDAR_CONFIG.axisLabelWidth;
         return [{ ...tick, left }];
       });
-      setAxisLabels(nextAxisLabels);
+      const axisSignature = nextAxisLabels.map((label) => `${label.key}@${label.left}`).join("|");
+      if (axisSignature !== lastAxisSignature) {
+        lastAxisSignature = axisSignature;
+        setAxisLabels(nextAxisLabels);
+      }
 
-      if (availableWidth !== lastAvailableWidth || height !== lastCanvasHeight) {
+      const resized = availableWidth !== lastAvailableWidth || height !== lastCanvasHeight;
+      if (resized) {
         node.style.width = "100%";
         node.style.height = `${height}px`;
         chart.resize({ width, height });
@@ -201,12 +218,19 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
         const current = cellRects.get(cell.date);
 
         if (current) {
+          // 颜色必须立即落盘，绝不能只靠 animateTo 补间：首帧用空数据画出的灰块
+          // 一旦补间被打断就再也上不了色，这正是“刷新后才显示”的根因。
           current.extra = extra;
           current.stopAnimation();
-          current.animateTo(
-            { shape, style: { fill: levelColors[cell.level] } },
-            { duration: CALENDAR_CONFIG.resizeTransitionMs, easing: "cubicOut" },
-          );
+          current.attr({ style: { fill: levelColors[cell.level] } });
+          if (resized) {
+            current.animateTo(
+              { shape },
+              { duration: CALENDAR_CONFIG.resizeTransitionMs, easing: "cubicOut" },
+            );
+          } else {
+            current.attr({ shape });
+          }
           continue;
         }
 

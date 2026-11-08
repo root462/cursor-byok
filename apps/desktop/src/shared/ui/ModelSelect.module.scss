@@ -55,16 +55,23 @@
 }
 
 .menu {
+  composes: liquid from global;
+  --liquid-radius: var(--oa-card-radius);
+  --liquid-padding: 4px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  // 86% 白在磨砂生效后等于一块白板，压到 66% 才透出底图的色彩。
+  --liquid-bg: color-mix(in srgb, var(--vscode-dropdown-background) 66%, transparent);
   position: fixed;
   z-index: 14001;
   display: flex;
   flex-direction: column;
+  // .liquid 自带 align-items: center，纵向 flex 里会让每个子项按内容宽度居中，
+  // 列表容器因此被压成 0 宽、选项全被 overflow 裁掉。必须显式拉伸。
+  align-items: stretch;
+  justify-content: flex-start;
   overflow: hidden;
   padding: 4px;
-  background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
-  border-radius: var(--oa-overlay-radius);
-  box-shadow: var(--oa-dropdown-shadow);
 }
 
 .listFrame,

@@ -175,6 +175,10 @@ pub fn api_router(service: ControlService) -> Router {
             get(harness::status),
         )
         .route(
+            "/__byok-api__/api/harness/cursor/app",
+            get(harness::app_info),
+        )
+        .route(
             "/__byok-api__/api/harness/cursor/ca/initialize",
             post(harness::initialize_ca),
         )

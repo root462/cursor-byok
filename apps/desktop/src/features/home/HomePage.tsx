@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type Overview } from "../../shared/api";
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
 import { DailyTokenUsageChart } from "./charts/DailyTokenUsageChart";
@@ -89,7 +89,8 @@ export function HomePage() {
     cacheWriteTokens: bucket.cache_write_tokens,
     outputTokens: bucket.output_tokens,
   }));
-  const contribution = contributionCalendarData(filteredOverview, selectedRange?.endMs ?? Date.now());
+  // 热力图固定展示过去一年，必须用全量 overview，不能跟随时间范围筛选。
+  const contribution = useMemo(() => contributionCalendarData(overview, Date.now()), [overview]);
   const metrics = {
     llmCalls: filteredOverview.metrics.llm_calls,
     successfulCalls: filteredOverview.metrics.successful_calls,

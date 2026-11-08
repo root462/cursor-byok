@@ -2,7 +2,7 @@
 use axum::{extract::State, Json};
 
 use crate::{
-    local_app::{CursorHarnessStatus, SetEnabled},
+    local_app::{detect_cursor_app, CursorAppInfo, CursorHarnessStatus, SetEnabled},
     Result,
 };
 
@@ -10,6 +10,11 @@ use super::ControlService;
 
 pub async fn status(State(service): State<ControlService>) -> Result<Json<CursorHarnessStatus>> {
     Ok(Json(service.cursor_harness().status().await?))
+}
+
+/// Reports the Cursor desktop build installed on this machine.
+pub async fn app_info() -> Json<CursorAppInfo> {
+    Json(detect_cursor_app().await)
 }
 
 pub async fn runtime_status(

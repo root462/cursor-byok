@@ -91,7 +91,7 @@ export function OverviewTimeRangeFilter({ value, quick, customOpen, customStart,
         onClick={() => onCustomOpenChange(!customOpen)}
       >{t("自定义")}</button>
     </div>
-    <TooltipTrigger label={t("刷新")}><button className={controls.iconButton} aria-label={t("刷新")} disabled={busy} onClick={onRefresh}>
+    <TooltipTrigger label={t("刷新")}><button className={`${controls.iconButton} ${styles.iconRound}`} aria-label={t("刷新")} disabled={busy} onClick={onRefresh}>
       <Icon className={busy ? controls.spin : ""} icon={refreshIcon} size="1.1em" />
     </button></TooltipTrigger>
     {customOpen && createPortal(<div

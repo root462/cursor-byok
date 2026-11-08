@@ -4,6 +4,7 @@ import { PageContent } from "../../shell/layout/PageContent";
 import { LegacyModelImport } from "../models/LegacyModelImport";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
 import { CommitSettingsCard } from "./CommitSettingsCard";
+import { CursorAppCard } from "./CursorAppCard";
 import { ExternalApiSettingsCard } from "./ExternalApiSettingsCard";
 import { PricingSettingsCard } from "./PricingSettingsCard";
 import { ProxySettingsCard } from "./ProxySettingsCard";
@@ -17,11 +18,10 @@ import { TitledCard } from "../../shared/ui/TitledCard";
 import { setLocalePreference, useI18n, type LocalePreference } from "../../i18n/store";
 import { useMessage } from "../../shared/ui/message";
 import { appStore, useAppStore } from "../../shared/store/appStore";
-import { themeOptions } from "../../shared/theme/theme";
 import styles from "./SettingsPage.module.scss";
 
 export function SettingsPage() {
-  const { detailed, ports, theme } = useAppStore();
+  const { detailed, ports } = useAppStore();
   const { preference, locale } = useI18n();
   const message = useMessage();
   const [proxyPort, setProxyPort] = useState(String(ports.proxy_port));
@@ -242,6 +242,7 @@ export function SettingsPage() {
           </Button>
         </div>
       </TitledCard>}</LegacyModelImport>
+      <CursorAppCard />
       <TitledCard title={t("语言")}>
         <div className={styles.settingRow}>
           <div>
@@ -261,19 +262,6 @@ export function SettingsPage() {
               onChange={(value) => setLocalePreference(value as LocalePreference)}
             />
           </div>
-        </div>
-      </TitledCard>
-      <TitledCard title={t("主题")}>
-        <div className={styles.themeActions}>
-          {themeOptions.map(({ id }) => (
-            <button
-              className={theme === id ? styles.selected : ""}
-              key={id}
-              onClick={() => appStore.selectTheme(id)}
-            >
-              {id === "default-dark" ? t("默认暗色") : t("默认亮色")}
-            </button>
-          ))}
         </div>
       </TitledCard>
       <TitledCard title={t("存储管理")}>

@@ -18,23 +18,33 @@
 }
 
 .chip {
+  composes: liquid from global;
+  --liquid-radius: 999px;
+  --liquid-padding: 3px 10px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  --liquid-blur: 8px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 3px 10px;
-  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.16));
-  border-radius: 999px;
-  background: transparent;
   color: inherit;
   font-size: 12px;
   cursor: pointer;
 
   &:hover {
-    border-color: var(--vscode-focusBorder, #49b0ff);
+    --liquid-border: var(--vscode-focusBorder, #49b0ff);
+  }
+
+  // 玻璃胶囊上浏览器默认的焦点环是一圈生硬的黑色，跟材质完全不搭；
+  // 换成与其他控件一致的 focusBorder 细环。
+  &:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
   }
 
   &.active {
-    border-color: var(--vscode-focusBorder, #49b0ff);
+    --liquid-border: var(--vscode-focusBorder, #49b0ff);
     color: var(--vscode-focusBorder, #49b0ff);
   }
 }

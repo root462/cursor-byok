@@ -1,15 +1,18 @@
 @use "../../styles/typography" as type;
 
 .menu {
+  composes: liquid from global;
+  --liquid-radius: 6px;
+  --liquid-padding: 4px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  --liquid-bg: color-mix(in srgb, var(--vscode-dropdown-background) 86%, transparent);
   position: fixed;
   z-index: 14000;
   min-width: 132px;
+  display: block;
   overflow: hidden;
   padding: 4px;
-  background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
-  border-radius: 6px;
-  box-shadow: var(--oa-dropdown-shadow);
 
   button,
   .textItem {

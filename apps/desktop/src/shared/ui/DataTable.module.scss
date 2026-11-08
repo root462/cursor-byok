@@ -16,10 +16,16 @@
   min-width: 0;
   min-height: 0;
   display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
   overflow: hidden;
-  background: var(--vscode-editorWidget-background);
-  border: 1px solid var(--vscode-sideBar-border);
-  border-radius: var(--oa-card-radius);
+  // 玻璃外观完全来自 liquid-glass.css 的 .liquid，此处只适配表格容器尺寸。
+  composes: liquid from global;
+  --liquid-radius: var(--oa-card-radius);
+  --liquid-padding: 0;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
 }
 
 .viewport {
@@ -80,7 +86,10 @@
     z-index: 2;
     height: 33px;
     color: var(--vscode-descriptionForeground);
-    background: var(--vscode-editor-background);
+    // 表头压在玻璃面板上：半透明 + 模糊，避免出现一条实心深色带。
+    background: color-mix(in srgb, var(--vscode-editorWidget-background) 55%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     font-size: type.$font-size-xs;
     font-weight: 400;
   }
@@ -96,7 +105,7 @@
   z-index: 1;
   width: 72px;
   min-width: 72px;
-  background: var(--vscode-editor-background);
+  background: color-mix(in srgb, var(--vscode-editorWidget-background) 55%, transparent);
 }
 
 thead .stickyRight {
@@ -104,5 +113,5 @@ thead .stickyRight {
 }
 
 tbody .stickyRight {
-  background: var(--vscode-editorWidget-background);
+  background: color-mix(in srgb, var(--vscode-editorWidget-background) 78%, transparent);
 }

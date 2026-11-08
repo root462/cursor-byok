@@ -1,4 +1,5 @@
 @use "../../styles/typography" as type;
+@use "../../styles/segmented" as segmented;
 
 .page {
   display: grid;
@@ -8,38 +9,60 @@
 .takeoverActions {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 
 .takeoverStatus {
+  // 保持固定宽度：状态文字在“已接管 / 未接管”之间切换时工具条不会左右抽动。
   min-width: 39px;
+  // 13px 字形在 1.5 行高的行盒里会偏上，在 36px 工具条中显得“顶边”。
+  // 压到 1 让行盒贴合字形，垂直居中才落得准。
+  line-height: 1;
   color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-xs;
+  letter-spacing: 0.02em;
   text-align: right;
   white-space: nowrap;
 }
 
+// 状态区与操作区之间的细分隔：比原来的按钮分割线更矮更淡，只用来分区，不用来切按钮。
+.actionDivider {
+  width: 1px;
+  height: 14px;
+  margin: 0 1px;
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+}
+
+// 分组切换：整体是一条浅色胶囊，选中项是浮在上面的白色小胶囊。
+// 原来用的是深色 activeSelection 方块 + 每个按钮的 border-right，
+// 在玻璃工具条里像一块补丁、分割线也和选中块打架。
 .groupActions {
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  border-radius: 5px;
+  @include segmented.segmented;
+}
 
-  button {
-    height: 25px;
-    padding: 0 8px;
-    color: var(--vscode-descriptionForeground);
-    background: transparent;
-    border: 0;
-    border-right: 1px solid var(--vscode-sideBar-border);
-    font-size: type.$font-size-xs;
-    white-space: nowrap;
+// 一键测试是动作而不是视图切换，单独出胶囊，和分段控件用间距分开。
+.batchAction {
+  height: 24px;
+  padding: 0 10px;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  font-size: type.$font-size-xs;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
 
-    &:last-child { border-right: 0; }
-    &:hover:not(:disabled) { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
-    &[aria-pressed="true"] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
-    &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &:hover:not(:disabled) {
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
   }
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+// 工具条里的图标按钮（添加模型）跟随工具条做成圆形热区。
+.toolbarIcon {
+  border-radius: 999px;
 }
 
 .gateActions {

@@ -1,6 +1,12 @@
 @use "../../styles/typography" as type;
 
 .root {
+  composes: liquid from global;
+  --liquid-radius: var(--oa-overlay-radius);
+  --liquid-padding: 8px 10px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  --liquid-bg: color-mix(in srgb, var(--vscode-editorHoverWidget-background) 88%, transparent);
   position: fixed;
   z-index: 15000;
   max-width: 420px;
@@ -8,10 +14,6 @@
   overflow-y: auto;
   padding: 8px 10px;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
-  background: var(--vscode-editorHoverWidget-background);
-  border: 1px solid var(--vscode-editorHoverWidget-border);
-  border-radius: var(--oa-overlay-radius);
-  box-shadow: var(--oa-tooltip-shadow);
   font-size: type.$font-size-xs;
   line-height: 1.5;
   overflow-wrap: anywhere;

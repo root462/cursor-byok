@@ -1,6 +1,10 @@
 .root {
+  // 玻璃外观完全来自 liquid-glass.css 的 .liquid，此处只适配卡片尺寸。
+  composes: liquid from global;
+  --liquid-radius: var(--oa-card-radius);
+  --liquid-padding: 0;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  display: block;
   padding: 0;
-  background: var(--vscode-editorWidget-background);
-  border: 1px solid var(--vscode-sideBar-border);
-  border-radius: var(--oa-card-radius);
 }

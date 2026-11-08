@@ -12,6 +12,12 @@
 }
 
 .secondary {
+  composes: liquid from global;
+  --liquid-radius: 6px;
+  --liquid-padding: 0 9px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 30px;
+  --liquid-bg: color-mix(in srgb, var(--vscode-input-background) 55%, transparent);
   min-height: 30px;
   height: 30px;
   display: inline-flex;
@@ -19,11 +25,8 @@
   gap: 6px;
   padding: 0 9px;
   color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--vscode-sideBar-border));
-  border-radius: 6px;
   white-space: nowrap;
-  &:hover { background: var(--vscode-list-hoverBackground); }
+  &:hover { --liquid-bg: color-mix(in srgb, var(--vscode-list-hoverBackground) 70%, transparent); }
   &:disabled { opacity: .5; cursor: not-allowed; }
 }
 

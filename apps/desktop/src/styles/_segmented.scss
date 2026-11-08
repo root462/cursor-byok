@@ -1,0 +1,46 @@
+@use "typography" as type;
+
+// 工具条里的分段控件：浅灰槽 + 白色胶囊选中态。
+//
+// 玻璃质感由外层的浮动工具条（.liquid）提供，段控件本身不再叠一层，
+// 否则两层毛玻璃糊在一起、选中项也容易被材质吃掉。
+// 目前两处在用 —— Cursor 页的分组切换、概览页的时间范围预设，
+// 抽成 mixin 是为了两处永远长一样。
+@mixin segmented {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  border-radius: 999px;
+
+  button {
+    height: 24px;
+    padding: 0 10px;
+    color: var(--vscode-descriptionForeground);
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    font-size: type.$font-size-xs;
+    white-space: nowrap;
+    transition: background-color 120ms ease, color 120ms ease;
+
+    &:hover:not(:disabled) {
+      color: var(--vscode-foreground);
+      background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+    }
+
+    &[aria-pressed="true"] {
+      color: var(--vscode-foreground);
+      background: color-mix(in srgb, #fff 92%, transparent);
+      box-shadow:
+        0 1px 2px rgb(15 23 42 / 14%),
+        inset 0 0 0 1px rgb(15 23 42 / 6%);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}

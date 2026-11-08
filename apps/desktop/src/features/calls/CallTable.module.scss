@@ -1,10 +1,13 @@
 @use "../../styles/typography" as type;
 
 .status {
-  padding: 3px 7px;
+  // 状态胶囊：玻璃外观来自 .liquid（与 CursorPresetChips 的预设胶囊同材质）。
+  composes: liquid from global;
+  --liquid-radius: 99px;
+  --liquid-padding: 3px 7px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
   color: var(--vscode-descriptionForeground);
-  background: var(--vscode-input-background);
-  border-radius: 99px;
   font-size: type.$font-size-xs;
 }
 

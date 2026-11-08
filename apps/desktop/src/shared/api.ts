@@ -112,6 +112,16 @@ export interface CursorRuntimeStatus {
   last_detected_at_ms: number | null;
 }
 
+export interface CursorAppInfo {
+  installed: boolean;
+  version: string | null;
+  build: string | null;
+  app_root: string | null;
+  executable: string | null;
+  running: boolean;
+  source: "bundle" | "launcher" | null;
+}
+
 export interface PortSettings {
   proxy_port: number;
   service_port: number;
@@ -279,6 +289,19 @@ const packagedDesktop = "__TAURI_INTERNALS__" in window
   || window.location.hostname === "tauri.localhost";
 const API_ROOT = "/__byok-api__/api";
 
+/**
+ * The dev server answers unmatched paths with the SPA document, so an API call
+ * made without the local management server returns HTML. Surfacing that as a
+ * JSON syntax error hides the real problem.
+ */
+function offlineMessage() {
+  return t("未连接到本地管理服务：当前地址返回的是页面而不是接口数据，请通过本地管理服务端口打开控制台");
+}
+
+function isDocument(body: string) {
+  return /^\s*<(?:!doctype|html)/i.test(body);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -291,6 +314,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!response.ok) {
     const body = await response.text();
+    if (isDocument(body)) throw new Error(offlineMessage());
     let message = body;
     try {
       const parsed = JSON.parse(body) as { message?: unknown };
@@ -301,6 +325,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(message || `${response.status} ${response.statusText}`);
   }
   if (response.status === 204) return undefined as T;
+  if (!(response.headers.get("content-type") ?? "").includes("json")) throw new Error(offlineMessage());
   return response.json() as Promise<T>;
 }
 
@@ -327,6 +352,7 @@ export const api = {
     return request<Overview>(`/overview${query ? `?${query}` : ""}`);
   },
   cursorHarness: () => request<CursorHarnessStatus>("/harness/cursor/status"),
+  cursorAppInfo: () => request<CursorAppInfo>("/harness/cursor/app"),
   cursorRuntimeStatus: () => request<CursorRuntimeStatus>("/harness/cursor/runtime-status", { signal: AbortSignal.timeout(5_000) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
   openCursorCaInstallTerminal: async (command: string) => {

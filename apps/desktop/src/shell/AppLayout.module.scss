@@ -7,7 +7,8 @@
   --app-page-padding: 18px;
   --app-content-left: calc(var(--app-edge) + var(--app-menu-width) );
   --app-content-top: calc(var(--window-safe-top) + var(--app-toolbar-height) + 10px );
-  background: var(--vscode-editor-background);
+  // 透明：底图铺在 html 上，布局容器不能挡。
+  background: transparent;
 }
 
 .menuCard {
@@ -18,6 +19,8 @@
   left: var(--app-edge);
   width: var(--app-menu-width);
   overflow: hidden;
+  // 侧栏比内容卡片更透：导航不需要压住背景，透一点才看得出是玻璃。
+  --liquid-bg: rgb(255 255 255 / 34%);
 }
 
 .navigation {
@@ -64,6 +67,8 @@
     color: inherit;
     text-decoration: none;
     border-radius: 6px;
+    // 高亮块跟着鼠标走的时候不要硬切。
+    transition: background-color 140ms ease, color 140ms ease;
 
     &:hover {
       background: var(--vscode-list-hoverBackground);
@@ -128,6 +133,30 @@
   min-height: 0;
 }
 
+/* 页面切换入场：缓存节点每次被重新插回文档，动画就重新播一遍
+   （切走时 keepalive 会把旧节点从 DOM 里摘掉，回来时重新 append）。
+
+   只动 transform，不动 opacity：页面里几乎每张卡片都是 backdrop-filter 玻璃，
+   祖先一旦出现 opacity < 1 就会成为 backdrop root，动画期间玻璃全部退化成
+   半透明白。
+   keyframes 必须写在本模块里：打包时 CSS Modules 会把模块内的动画名一起哈希，
+   引用外部全局 @keyframes 时名字对不上，动画会静默失效。 */
+@keyframes pageIn {
+  from {
+    transform: translate3d(0, 12px, 0) scale(0.996);
+  }
+}
+
+.keepAlivePage {
+  animation: pageIn 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .keepAlivePage {
+    animation: none;
+  }
+}
+
 .actionRegion {
   position: absolute;
   z-index: 12500;
@@ -150,15 +179,30 @@
 }
 
 .actions {
-  height: var(--app-toolbar-height);
+  min-height: var(--app-toolbar-height);
   min-width: var(--app-toolbar-height);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 6px;
-  gap: 3px;
-  box-shadow: 0 0px 6px 4px var(--vscode-editor-background);
-  transform: translateX(6px);
+  gap: 5px;
+  // 这里原来有一条 transform: translateX(6px)，把整条工具条又往窗口边缘推了 6px，
+  // 右缘因此比下方卡片的内容网格更靠外，看起来是“顶在边上”。
+  // 位置交给 .actionRegion 的 right 决定即可，工具条与卡片同列对齐。
+  // 浮动工具栏：玻璃外观来自 .liquid，用 --liquid-padding 撑开内边距。
+  composes: liquid from global;
+  --liquid-radius: var(--oa-overlay-radius);
+  // .liquid::before 那道内描边内缩 8px 后被 26px 模糊成一层暗晕，
+  // 端头元素（状态文字 / 列 按钮）落在晕里就显得贴边。
+  // 左右留 18px 把内容和晕分开（端头留白比卡片 18px 的网格更松一档）；上下仍是 5px。
+  --liquid-padding: 5px 18px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+
+  // 工具条里的图标按钮（刷新 / 添加）做成圆形热区，和条形的圆角走向一致。
+  // 只命中直接子元素，避免波及 PageActions 插槽里的文字按钮。
+  > button {
+    border-radius: 999px;
+  }
 }
 
 .pageActions {
