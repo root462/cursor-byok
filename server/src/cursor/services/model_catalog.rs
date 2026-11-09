@@ -11,6 +11,7 @@ use crate::{
     api::cursor::proxy::{self, CursorProxy},
     cursor::{protocol::proto::agent::v1 as agent, transport::TransportRegistry},
     model::{format_token_count, parse_token_count, ModelConfig},
+    plugin::PluginModelDescriptor,
     Error, Result,
 };
 
@@ -251,15 +252,22 @@ pub async fn available_models(
     request: Request<Body>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
+    let plugin_models = match registry.plugins() {
+        Some(plugins) => plugins.configured_models().await,
+        None => Vec::new(),
+    };
     tracing::info!(
         model_count = models.len(),
+        plugin_model_count = plugin_models.len(),
         "appending BYOK models to Cursor AvailableModels"
     );
-    let available_models = models.iter().map(available_model).collect();
+    let mut available_models = models.iter().map(available_model).collect::<Vec<_>>();
+    available_models.extend(plugin_models.iter().map(available_plugin_model));
     let local = AvailableModelsAddition {
         model_names: models
             .iter()
             .map(|model| model.model_hash.clone())
+            .chain(plugin_models.iter().map(|model| model.id.clone()))
             .collect(),
         models: available_models,
     }
@@ -279,12 +287,21 @@ pub async fn usable_models(
     request: Request<Body>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
+    let plugin_models = match registry.plugins() {
+        Some(plugins) => plugins.configured_models().await,
+        None => Vec::new(),
+    };
     tracing::info!(
         model_count = models.len(),
+        plugin_model_count = plugin_models.len(),
         "appending BYOK models to Cursor GetUsableModels"
     );
     let local = UsableModelsAddition {
-        models: models.iter().map(usable_model).collect(),
+        models: models
+            .iter()
+            .map(usable_model)
+            .chain(plugin_models.iter().map(usable_plugin_model))
+            .collect(),
     }
     .encode_to_vec();
     match proxy::forward_buffered(&proxy, request).await {
@@ -300,9 +317,10 @@ pub async fn default_model_for_cli(
     State(registry): State<TransportRegistry>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
+    let plugin_models = configured_plugin_models(&registry).await;
     Ok(local_response(
         agent::GetDefaultModelForCliResponse {
-            model: default_model_details(&models),
+            model: default_model_details(&models, &plugin_models),
         }
         .encode_to_vec(),
     ))
@@ -310,8 +328,9 @@ pub async fn default_model_for_cli(
 
 pub async fn default_model(State(registry): State<TransportRegistry>) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
+    let plugin_models = configured_plugin_models(&registry).await;
     Ok(local_response(
-        default_model_response(&models).encode_to_vec(),
+        default_model_response(&models, &plugin_models).encode_to_vec(),
     ))
 }
 
@@ -319,24 +338,45 @@ pub async fn default_model_nudge(
     State(registry): State<TransportRegistry>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
+    let plugin_models = configured_plugin_models(&registry).await;
     Ok(local_response(
-        default_model_nudge_response(&models).encode_to_vec(),
+        default_model_nudge_response(&models, &plugin_models).encode_to_vec(),
     ))
 }
 
-fn default_model_details(models: &[ModelConfig]) -> Option<agent::ModelDetails> {
-    models.first().map(usable_model)
+async fn configured_plugin_models(registry: &TransportRegistry) -> Vec<PluginModelDescriptor> {
+    match registry.plugins() {
+        Some(plugins) => plugins.configured_models().await,
+        None => Vec::new(),
+    }
 }
 
-fn default_model_id(models: &[ModelConfig]) -> &str {
+fn default_model_details(
+    models: &[ModelConfig],
+    plugin_models: &[PluginModelDescriptor],
+) -> Option<agent::ModelDetails> {
+    models
+        .first()
+        .map(usable_model)
+        .or_else(|| plugin_models.first().map(usable_plugin_model))
+}
+
+fn default_model_id<'a>(
+    models: &'a [ModelConfig],
+    plugin_models: &'a [PluginModelDescriptor],
+) -> &'a str {
     models
         .first()
         .map(|model| model.model_hash.as_str())
+        .or_else(|| plugin_models.first().map(|model| model.id.as_str()))
         .unwrap_or_default()
 }
 
-fn default_model_response(models: &[ModelConfig]) -> DefaultModelResponse {
-    let model = default_model_id(models).to_owned();
+fn default_model_response(
+    models: &[ModelConfig],
+    plugin_models: &[PluginModelDescriptor],
+) -> DefaultModelResponse {
+    let model = default_model_id(models, plugin_models).to_owned();
     DefaultModelResponse {
         thinking_model: model.clone(),
         model,
@@ -345,13 +385,17 @@ fn default_model_response(models: &[ModelConfig]) -> DefaultModelResponse {
     }
 }
 
-fn default_model_nudge_response(models: &[ModelConfig]) -> DefaultModelNudgeDataResponse {
+fn default_model_nudge_response(
+    models: &[ModelConfig],
+    plugin_models: &[PluginModelDescriptor],
+) -> DefaultModelNudgeDataResponse {
     DefaultModelNudgeDataResponse {
         nudge_date: "0".into(),
         should_default_switch_on_new_chat: false,
         models_with_no_default_switch: models
             .iter()
             .map(|model| model.model_hash.clone())
+            .chain(plugin_models.iter().map(|model| model.id.clone()))
             .collect(),
         conversion_model_override: String::new(),
     }
@@ -646,11 +690,69 @@ fn model_tooltip(model: &ModelConfig) -> TooltipData {
     }
 }
 
+fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
+    let tooltip = TooltipData {
+        markdown_content: model.description.clone(),
+    };
+    // Effort 与上下文档位由宿主统一提供,与内置模型一致;插件不再声明这两项。
+    let contexts = context_options(None);
+    let variants = model_variants(&model.id, &model.display_name, &tooltip, &contexts, true);
+    let legacy_slugs = variants
+        .iter()
+        .filter_map(|variant| variant.legacy_slug.clone())
+        .collect();
+    AvailableModel {
+        name: model.id.clone(),
+        default_on: true,
+        supports_agent: Some(true),
+        degradation_status: Some(0),
+        tooltip_data: Some(tooltip.clone()),
+        supports_thinking: Some(true),
+        supports_images: Some(model.images),
+        supports_max_mode: Some(false),
+        client_display_name: Some(model.display_name.clone()),
+        server_model_name: Some(model.id.clone()),
+        supports_non_max_mode: Some(true),
+        tooltip_data_for_max_mode: Some(tooltip.clone()),
+        is_recommended_for_background_composer: Some(false),
+        supports_plan_mode: Some(true),
+        inputbox_short_model_name: Some(model.display_name.clone()),
+        supports_sandboxing: Some(true),
+        supports_cmd_k: Some(false),
+        parameter_definitions: model_parameters(&contexts, true),
+        variants,
+        legacy_slugs,
+        named_model_section_index: Some(1),
+        vendor_name: Some(model.provider_type.clone()),
+        vendor: Some(AvailableModelVendor {
+            id: 6,
+            display_name: model.provider_type.clone(),
+        }),
+        model_picker_badges: vec![ModelPickerBadge {
+            label: model.plugin_name.clone(),
+            variant: 1,
+            dismiss_on_selection: false,
+        }],
+    }
+}
+
 fn cli_local_model_credentials() -> agent::model_details::Credentials {
     agent::model_details::Credentials::ApiKeyCredentials(agent::ApiKeyCredentials {
         api_key: CLI_LOCAL_MODEL_API_KEY.into(),
         base_url: None,
     })
+}
+
+fn usable_plugin_model(model: &PluginModelDescriptor) -> agent::ModelDetails {
+    agent::ModelDetails {
+        model_id: model.id.clone(),
+        display_model_id: model.id.clone(),
+        display_name: model.display_name.clone(),
+        display_name_short: model.display_name.clone(),
+        thinking_details: Some(agent::ThinkingDetails::default()),
+        credentials: Some(cli_local_model_credentials()),
+        ..Default::default()
+    }
 }
 
 fn usable_model(model: &ModelConfig) -> agent::ModelDetails {
@@ -716,16 +818,42 @@ mod tests {
     }
 
     #[test]
+    fn cli_plugin_model_details_use_local_routing_credentials() {
+        let details = usable_plugin_model(&PluginModelDescriptor {
+            id: "plugin:test/provider/model".into(),
+            plugin_id: "plugin:test".into(),
+            plugin_name: "Test Plugin".into(),
+            provider_id: "provider".into(),
+            model_id: "model".into(),
+            display_name: "Plugin Model".into(),
+            description: None,
+            icon: String::new(),
+            provider_type: "test".into(),
+            max_output_tokens: None,
+            images: false,
+            enabled: true,
+        });
+        assert_eq!(details.model_id, "plugin:test/provider/model");
+        let agent::model_details::Credentials::ApiKeyCredentials(credentials) =
+            details.credentials.expect("API credentials")
+        else {
+            panic!("expected API key credentials");
+        };
+        assert_eq!(credentials.api_key, CLI_LOCAL_MODEL_API_KEY);
+        assert_eq!(credentials.base_url, None);
+    }
+
+    #[test]
     fn cli_default_responses_use_the_local_model_hash() {
         let models = vec![model()];
-        let details = default_model_details(&models).expect("default model");
+        let details = default_model_details(&models, &[]).expect("default model");
         assert_eq!(details.model_id, "local-model-hash");
 
-        let response = default_model_response(&models);
+        let response = default_model_response(&models, &[]);
         assert_eq!(response.model, "local-model-hash");
         assert_eq!(response.thinking_model, "local-model-hash");
 
-        let nudge = default_model_nudge_response(&models);
+        let nudge = default_model_nudge_response(&models, &[]);
         assert_eq!(
             nudge.models_with_no_default_switch,
             vec!["local-model-hash"]

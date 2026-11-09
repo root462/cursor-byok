@@ -27,6 +27,8 @@ cursor-server.tar
 server-node/cursor.tar
 server-go/cursor.tar
 server-go/log/
+/.dev/
+.tmp_check_db.py
 .cursor-local-assistant
 .cursor-local-assistant-v2
 .cursor-app-formatted/

@@ -18,6 +18,9 @@ pub enum ProviderType {
     OpenAiResponses,
     #[serde(rename = "anthropic")]
     Anthropic,
+    /// 插件执行的调用;协议细节在插件内部,核心只按统一事件流记录。
+    #[serde(rename = "plugin")]
+    Plugin,
 }
 
 impl ProviderType {
@@ -26,6 +29,7 @@ impl ProviderType {
             Self::OpenAiChat => "openai-chat",
             Self::OpenAiResponses => "openai-responses",
             Self::Anthropic => "anthropic",
+            Self::Plugin => "plugin",
         }
     }
 }
@@ -44,6 +48,7 @@ impl FromStr for ProviderType {
             "openai-chat" => Ok(Self::OpenAiChat),
             "openai-responses" => Ok(Self::OpenAiResponses),
             "anthropic" => Ok(Self::Anthropic),
+            "plugin" => Ok(Self::Plugin),
             _ => Err(Error::Config(format!("unsupported provider type: {value}"))),
         }
     }

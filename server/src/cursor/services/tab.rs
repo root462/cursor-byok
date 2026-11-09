@@ -7,7 +7,9 @@ use axum::{
     Router,
 };
 
-use crate::{api::cursor::proxy, cursor::transport::TransportRegistry, Result};
+use crate::{
+    api::cursor::proxy, cursor::services::tab_local, cursor::transport::TransportRegistry, Result,
+};
 
 pub const TAB_PATHS: [&str; 16] = [
     "/aiserver.v1.AiService/StreamCpp",
@@ -44,8 +46,22 @@ async fn forward(
     request: Request<Body>,
 ) -> Result<Response<Body>> {
     let settings = registry.store().tab_settings().await?;
+    if settings.is_local() {
+        if request.uri().path() == tab_local::STREAM_CPP_PATH {
+            return tab_local::stream_cpp(&registry, request, &settings).await;
+        }
+        // 本地模式只接管补全本身：光标预测、配置、编辑历史仍走官方。
+        return proxy::forward(Extension(upstream), request).await;
+    }
     match settings.service_url() {
-        Some(service_url) => proxy::forward_to_service(&upstream, request, service_url).await,
+        Some(url) => {
+            let service = proxy::TabServiceAuth {
+                url,
+                api_key: &settings.api_key,
+                model: &settings.model,
+            };
+            proxy::forward_to_service(&upstream, request, service).await
+        }
         None => proxy::forward(Extension(upstream), request).await,
     }
 }

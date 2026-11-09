@@ -89,11 +89,15 @@ Custom headers and extra parameters must be JSON objects containing only support
 
 ## TAB and Other Settings
 
-Cursor Tab completions use a separate TAB service rather than an Agent model channel. Under **System settings → TAB Settings**, choose:
+Cursor Tab completions use a separate TAB service rather than an Agent model channel. Under **Settings → TAB settings** in the sidebar, choose:
 
-- **Public service:** Use the preset third-party public service; availability depends on its operator.
 - **Direct:** Connect to Cursor's official TAB service, subject to your account's access and credits.
-- **Custom:** Enter a service URL implementing compatible TAB endpoints. An ordinary chat API cannot directly replace a TAB service.
+- **Custom:** Enter the URL of a service implementing compatible TAB endpoints, plus the access key it expects and the model the completion should run on. An ordinary chat API cannot directly replace a TAB service.
+- **Configured model:** No URL or key needed. `StreamCpp` is decoded locally (file contents plus cursor) and answered by a model from **Models**; enabled plugin models work too, addressed by their plugin model ID through the plugin provider router. Cursor prediction and TAB config still go to Cursor's official endpoint. Quality depends on that model and is slower than Cursor's dedicated small models.
+
+The model dropdown lists the model IDs of your configured models and enabled plugin models alongside the models that service returns, so you can pick one or still type a name manually.
+
+For a custom service, the key is sent as `Authorization: Bearer <key>` together with the matching `x-cursor-checksum`, and the selected model is written into `model_name` of the `StreamCpp` and `StreamNextCursorPrediction` requests. Leave the key empty to forward Cursor's own credential, and leave the model empty to keep the model Cursor picks. **Fetch models** reads an OpenAI-compatible model listing (`{url}/v1/models`, falling back to `{url}/models`) so the model can be picked instead of typed.
 
 System settings also provides **Commit Settings**. Choose a configured model and edit its prompt, or choose **Direct** to use Cursor's official service.
 

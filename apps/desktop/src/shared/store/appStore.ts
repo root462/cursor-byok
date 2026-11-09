@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type CursorHarnessStatus, type CursorRuntimeStatus, type LlmCall, type Model, type ModelInput, type Overview, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, type CursorHarnessStatus, type CursorRuntimeStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, isThemeId, type ThemeId } from "../theme/theme";
 
 export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = {
@@ -22,6 +22,8 @@ export type AppSnapshot = {
   cursorHarness: CursorHarnessStatus | null;
   cursorRuntime: CursorRuntimeStatus | null;
   cursorBusy: boolean;
+  pluginRuntime: PluginRuntimeStatus | null;
+  plugins: PluginDescriptor[];
 };
 
 const savedTheme = (): ThemeId => {
@@ -56,6 +58,8 @@ let snapshot: AppSnapshot = {
   cursorHarness: null,
   cursorRuntime: null,
   cursorBusy: false,
+  pluginRuntime: null,
+  plugins: [],
 };
 
 const listeners = new Set<() => void>();
@@ -85,7 +89,7 @@ export const appStore = {
   async refresh() {
     update({ busy: true, error: null });
     try {
-      const [models, calls, overview, settings, ports, pricing, cursorHarness] = await Promise.all([
+      const [models, calls, overview, settings, ports, pricing, cursorHarness, pluginRuntime, plugins] = await Promise.all([
         api.models(),
         api.calls(),
         api.overview(),
@@ -93,8 +97,10 @@ export const appStore = {
         api.ports(),
         api.pricingSettings(),
         api.cursorHarness(),
+        api.pluginRuntime(),
+        api.plugins(),
       ]);
-      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness });
+      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, pluginRuntime, plugins });
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
     } finally {
@@ -116,6 +122,59 @@ export const appStore = {
     } finally {
       runtimeStatusPending = false;
     }
+  },
+
+  async initializePluginRuntime() {
+    update({ error: null });
+    try {
+      const pluginRuntime = await api.initializePluginRuntime();
+      update({ pluginRuntime });
+      return pluginRuntime;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    }
+  },
+
+  async refreshPluginRuntime() {
+    try {
+      const wasReady = snapshot.pluginRuntime?.state === "ready";
+      const pluginRuntime = await api.pluginRuntime();
+      update({ pluginRuntime });
+      if (!wasReady && pluginRuntime.state === "ready") {
+        update({ plugins: await api.plugins() });
+      }
+      return pluginRuntime;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    }
+  },
+
+  async cancelPluginRuntimeInitialization() {
+    try {
+      const pluginRuntime = await api.cancelPluginRuntimeInitialization();
+      update({ pluginRuntime });
+      return pluginRuntime;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    }
+  },
+
+  async refreshPlugins() {
+    try {
+      update({ plugins: await api.plugins() });
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+    }
+  },
+
+  async removePluginConfiguration(pluginId: string) {
+    await perform(async () => {
+      await api.removePluginConfiguration(pluginId);
+      update({ plugins: await api.plugins() });
+    });
   },
 
   async deleteModel(modelHash: string) {

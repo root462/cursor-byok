@@ -64,13 +64,15 @@ export type ComboboxHandle = {
 type ComboboxProps = {
   value: string;
   options?: string[];
+  /** 展示名与取值不同时使用（如插件模型的复合 ID）。 */
+  optionLabels?: Record<string, string>;
   placeholder?: string;
   disabled?: boolean;
   append?: ReactNode;
   onChange: (value: string) => void;
 };
 
-export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combobox({ value, options = [], placeholder, disabled, append, onChange }, ref) {
+export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combobox({ value, options = [], optionLabels, placeholder, disabled, append, onChange }, ref) {
   const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -81,11 +83,17 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
   const [filtering, setFiltering] = useState(true);
   const [active, setActive] = useState(-1);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 0, maxHeight: 280 });
+  const labelOf = (option: string) => optionLabels?.[option] ?? option;
+  // 选中复合 ID 时按显示名过滤，否则用户看到的文字与过滤依据不一致。
+  const query = (optionLabels?.[value] ?? value).trim().toLocaleLowerCase();
   const filtered = useMemo(() => {
     if (!filtering) return options;
-    const query = value.trim().toLocaleLowerCase();
-    return options.filter((option) => !query || option.toLocaleLowerCase().includes(query));
-  }, [filtering, options, value]);
+    return options.filter((option) => {
+      if (!query) return true;
+      const label = optionLabels?.[option] ?? option;
+      return label.toLocaleLowerCase().includes(query) || option.toLocaleLowerCase().includes(query);
+    });
+  }, [filtering, options, query, optionLabels]);
 
   useImperativeHandle(ref, () => ({
     openAll: () => {
@@ -121,8 +129,8 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     if (disabled || options.length === 0) return;
     setFiltering(true);
     setOpen(true);
-    const query = value.trim().toLocaleLowerCase();
-    const matchingOptions = options.filter((option) => !query || option.toLocaleLowerCase().includes(query));
+    const query = (optionLabels?.[value] ?? value).trim().toLocaleLowerCase();
+    const matchingOptions = options.filter((option) => !query || (optionLabels?.[option] ?? option).toLocaleLowerCase().includes(query) || option.toLocaleLowerCase().includes(query));
     const selected = matchingOptions.indexOf(value);
     setActive(selected >= 0 ? selected : 0);
   };
@@ -133,7 +141,7 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     setActive((index) => (index < 0 ? 0 : (index + step + filtered.length) % filtered.length));
   };
   return <div className={styles.comboRow}><div ref={root} className={styles.combo}>
-    <input ref={input} value={value} placeholder={placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" onFocus={() => { if (options.length) openMenu(); }} onBlur={() => { closeTimer.current = window.setTimeout(() => setOpen(false), 100); }} onChange={(event) => { setFiltering(true); onChange(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
+    <input ref={input} value={labelOf(value)} placeholder={placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" onFocus={() => { if (options.length) openMenu(); }} onBlur={() => { closeTimer.current = window.setTimeout(() => setOpen(false), 100); }} onChange={(event) => { setFiltering(true); onChange(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
       if (event.key === "Enter" && open && filtered[active]) { event.preventDefault(); choose(filtered[active]); }
@@ -142,7 +150,7 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     <button type="button" className={styles.comboToggle} disabled={disabled} aria-label={t("打开模型列表")} aria-expanded={open} tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (open) setOpen(false); else { openMenu(); input.current?.focus(); } }}><Icon icon={chevronDownIcon} size="1.1em" className={[styles.dropdownIcon, open && styles.dropdownIconOpen].filter(Boolean).join(" ")} /></button>
     {open && createPortal(<div id={menuId} ref={menu} className={styles.menu} role="listbox" style={{ left: position.left, top: position.top, width: position.width }}>
       <VirtualList items={filtered} itemKey={(option) => option} estimatedItemHeight={30} onReady={(api) => { listApi.current = api; if (active >= 0) api.scrollToIndex(active); }} style={{ height: Math.min(filtered.length * 30, Math.max(30, position.maxHeight - 8)) }}>
-        {(option, index) => <button type="button" role="option" aria-selected={option === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{option}</button>}
+        {(option, index) => <button type="button" role="option" aria-selected={option === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{labelOf(option)}</button>}
       </VirtualList>
     </div>, document.body)}
   </div>{append}</div>;

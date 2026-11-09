@@ -16,7 +16,9 @@ use axum::{
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
-use crate::{model::ModelInvocation, provider::Provider, store::Store, Error};
+use crate::{
+    model::ModelInvocation, plugin::PluginRegistry, provider::Provider, store::Store, Error,
+};
 
 use self::protocol::Protocol;
 pub use direct::NativeForwarder;
@@ -24,12 +26,14 @@ pub use direct::NativeForwarder;
 #[derive(Clone)]
 struct ApiState {
     store: Store,
+    plugins: PluginRegistry,
     provider: Arc<dyn Provider>,
     native: Option<NativeForwarder>,
 }
 
 pub fn router(
     store: Store,
+    plugins: PluginRegistry,
     provider: Arc<dyn Provider>,
     native: Option<NativeForwarder>,
 ) -> Router {
@@ -40,6 +44,7 @@ pub fn router(
         .route("/byok/v1/messages", post(messages))
         .with_state(ApiState {
             store,
+            plugins,
             provider,
             native,
         })
@@ -100,7 +105,7 @@ async fn list_models(State(state): State<ApiState>, headers: HeaderMap) -> Respo
     if let Err(error) = authorized(&state, &headers).await {
         return *error;
     }
-    match models::list(&state.store).await {
+    match models::list(&state.store, &state.plugins).await {
         Ok(models) => Json(models::response(&models)).into_response(),
         Err(error) => api_error(StatusCode::CONFLICT, error),
     }
@@ -146,7 +151,7 @@ async fn generate(
     else {
         return api_error(StatusCode::BAD_REQUEST, "model is required");
     };
-    let models = match models::list(&state.store).await {
+    let models = match models::list(&state.store, &state.plugins).await {
         Ok(models) => models,
         Err(error) => return api_error(StatusCode::CONFLICT, error),
     };

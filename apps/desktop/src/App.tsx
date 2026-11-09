@@ -9,11 +9,16 @@ import { CallsPage } from "./features/calls/CallsPage";
 import { CallDetailsPage } from "./features/calls/CallDetailsPage";
 import { CursorSettingsPage } from "./features/models/CursorSettingsPage";
 import { HomePage } from "./features/home/HomePage";
+import { PluginManagementPage } from "./features/plugins/PluginManagementPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { TabSettingsPage } from "./features/tab/TabSettingsPage";
 import { appStore, useAppStore } from "./shared/store/appStore";
 import { updateStore } from "./shared/store/updateStore";
 
 const AUTO_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const AUTO_UPDATE_RETRY_BASE_MS = 30 * 1_000;
+const AUTO_UPDATE_RETRY_MAX_MS = 30 * 60 * 1_000;
+const AUTO_UPDATE_RETRY_MAX_DOUBLINGS = 8;
 
 export function App() {
   return (
@@ -26,6 +31,8 @@ export function App() {
               <Route index element={<HomePage />} />
               <Route path="calls" element={<CallsPage />} />
               <Route path="harness/cursor" element={<CursorSettingsPage />} />
+              <Route path="plugins" element={<PluginManagementPage />} />
+              <Route path="tab" element={<TabSettingsPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -41,7 +48,6 @@ function AppMessages() {
   const { error, cursorRuntime } = useAppStore();
   const lastRuntimeWarning = useRef(0);
   const previousError = useRef<string | null>(null);
-  const lastAutomaticUpdateCheckAt = useRef(0);
   const showMessage = useMessage();
 
   useEffect(() => {
@@ -74,17 +80,49 @@ function AppMessages() {
 
   useEffect(() => {
     let disposed = false;
+    let retryTimer = 0;
+    let failedChecks = 0;
+    let nextAttemptAt = 0;
+
+    const clearRetry = () => {
+      window.clearTimeout(retryTimer);
+      retryTimer = 0;
+    };
+
+    // 自动检查失败后按指数退避重试：30s、1m、2m…封顶 30min。
+    // 断网时不排定时器，交给 online 事件立即补一次。
+    const scheduleRetry = () => {
+      clearRetry();
+      if (disposed || !navigator.onLine) return;
+      const delay = Math.min(
+        AUTO_UPDATE_RETRY_BASE_MS * 2 ** Math.min(failedChecks, AUTO_UPDATE_RETRY_MAX_DOUBLINGS),
+        AUTO_UPDATE_RETRY_MAX_MS,
+      );
+      failedChecks += 1;
+      nextAttemptAt = Date.now() + delay;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = 0;
+        nextAttemptAt = 0;
+        checkAutomatically();
+      }, delay);
+    };
+
     const checkAutomatically = () => {
+      if (disposed) return;
       const now = Date.now();
-      if (now - lastAutomaticUpdateCheckAt.current < AUTO_UPDATE_CHECK_INTERVAL_MS) return;
-      lastAutomaticUpdateCheckAt.current = now;
+      if (now < nextAttemptAt) return;
+      nextAttemptAt = now + AUTO_UPDATE_CHECK_INTERVAL_MS;
       const previousVersion = updateStore.getSnapshot().availableVersion;
       void updateStore.check().then((version) => {
+        failedChecks = 0;
+        clearRetry();
         if (disposed || !version || version === previousVersion) return;
         showMessage(t("发现新版本 {version}，可在设置中安装", { version }), { duration: 6_000 });
       }).catch(() => {
-        if (!disposed) lastAutomaticUpdateCheckAt.current = 0;
-        // Automatic checks are best-effort; manual checks in Settings report errors.
+        if (disposed) return;
+        // 失败不打扰用户，但放开节流并按退避排下一次重试；手动检查在设置页报错。
+        nextAttemptAt = 0;
+        scheduleRetry();
       });
     };
     const checkWhenVisible = () => {
@@ -98,6 +136,7 @@ function AppMessages() {
     const timer = window.setInterval(checkAutomatically, AUTO_UPDATE_CHECK_INTERVAL_MS);
     return () => {
       disposed = true;
+      clearRetry();
       window.removeEventListener("focus", checkAutomatically);
       window.removeEventListener("online", checkAutomatically);
       document.removeEventListener("visibilitychange", checkWhenVisible);

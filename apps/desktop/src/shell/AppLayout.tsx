@@ -8,7 +8,7 @@ import { Card } from "../shared/ui/Card";
 import controls from "../shared/ui/Controls.module.scss";
 import { Icon } from "../shared/ui/Icon";
 import { TooltipTrigger } from "../shared/ui/TooltipTrigger";
-import { flatColorAreaChartIcon, flatColorSalesPerformanceIcon, flatColorSettingsIcon, refreshIcon } from "../shared/ui/icons";
+import { flatColorAreaChartIcon, flatColorCrystalOscillatorIcon, flatColorDataConfigurationIcon, flatColorSalesPerformanceIcon, flatColorSettingsIcon, refreshIcon } from "../shared/ui/icons";
 import { VirtualList } from "../shared/virtual/VirtualList";
 import { appStore, useAppStore } from "../shared/store/appStore";
 import { useUpdateStore } from "../shared/store/updateStore";
@@ -19,7 +19,7 @@ type MenuItem =
   | { kind: "page"; path: string; label: string; icon: IconifyIcon | string }
   | { kind: "group"; label: string };
 
-const keptAlivePages = ["/", "/calls", "/settings", "/harness/cursor"];
+const keptAlivePages = ["/", "/calls", "/settings", "/harness/cursor", "/plugins", "/tab"];
 
 export function AppLayout() {
   const { busy, cursorHarness } = useAppStore();
@@ -33,6 +33,8 @@ export function AppLayout() {
     { kind: "group", label: t("模型配置") },
     { kind: "page", path: "/harness/cursor", label: "Cursor", icon: cursorIconUrl },
     { kind: "group", label: t("设置") },
+    { kind: "page", path: "/plugins", label: t("插件配置"), icon: flatColorCrystalOscillatorIcon },
+    { kind: "page", path: "/tab", label: t("TAB 配置"), icon: flatColorDataConfigurationIcon },
     { kind: "page", path: "/settings", label: t("系统设置"), icon: flatColorSettingsIcon },
   ];
 

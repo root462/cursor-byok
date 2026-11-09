@@ -95,7 +95,7 @@ let proxySettings: ProxySettings = {
   username: "",
   has_password: false,
 };
-let tabSettings: TabSettings = { mode: "public", address: "" };
+let tabSettings: TabSettings = { mode: "direct", address: "", api_key: "", model: "" };
 let storage: StatisticsStorage = { call_count: calls.length, trace_count: calls.length };
 
 export function installDemoApi() {
@@ -168,6 +168,7 @@ export function installDemoApi() {
       return json(proxySettings);
     }
     if (path === "/settings/tab" && method === "GET") return json(tabSettings);
+    if (path === "/settings/tab/models") return json({ models: models.map((model) => model.model_id) });
     if (path === "/settings/tab") {
       tabSettings = body as TabSettings;
       return json(tabSettings);

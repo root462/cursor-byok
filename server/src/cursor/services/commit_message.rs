@@ -61,7 +61,14 @@ async fn forward_direct(
 ) -> Result<Response<Body>> {
     let settings = registry.store().tab_settings().await?;
     match settings.service_url() {
-        Some(service_url) => proxy::forward_to_service(&upstream, request, service_url).await,
+        Some(url) => {
+            let service = proxy::TabServiceAuth {
+                url,
+                api_key: &settings.api_key,
+                model: &settings.model,
+            };
+            proxy::forward_to_service(&upstream, request, service).await
+        }
         None => proxy::forward(Extension(upstream), request).await,
     }
 }

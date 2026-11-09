@@ -13,4 +13,5 @@ pub mod observability;
 pub mod runtime_compatibility;
 pub mod server_config;
 pub mod tab;
+pub mod tab_local;
 pub mod usage;

@@ -1,0 +1,285 @@
+@use "../../styles/typography" as type;
+
+.pluginGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+  padding-top: 10px;
+}
+
+// 卡片材质：白度压到 42%，底图的粉蓝才透得进来；再叠一层斜向反光补玻璃厚度，
+// 否则底图这块区域本就接近纯白，玻璃会读成一张白纸。
+.pluginCard {
+  --liquid-bg: rgb(255 255 255 / 36%);
+  --liquid-border: rgb(15 23 42 / 11%);
+  --liquid-blur: 40px;
+
+  min-width: 0;
+  min-height: 154px;
+  display: flex;
+  flex-direction: column;
+  // .liquid 自带 align-items: center，会让三个区块各自缩到内容宽度：
+  // 顶部行贴不齐左缘，操作行也失去整行宽度，`更多` 推不到行尾。这里显式拉满。
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 18px;
+
+  background-image:
+    linear-gradient(180deg, rgb(255 255 255 / 56%) 0%, rgb(255 255 255 / 2%) 44%),
+    linear-gradient(118deg, rgb(255 255 255 / 42%) 0%, rgb(255 255 255 / 0%) 36%, rgb(255 255 255 / 20%) 100%);
+  box-shadow:
+    inset 1px 1px 0 rgb(255 255 255 / 92%),
+    inset -1px -1px 0 rgb(15 23 42 / 6%),
+    inset 0 0 28px -10px rgb(255 255 255 / 80%),
+    0 18px 40px -20px rgb(15 23 42 / 36%);
+}
+
+.pluginCardTop {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+// 图标自己做一个玻璃底托：三个插件的图标分别是紫块、黑块、彩色字，
+// 直接贴在卡面上材质会被图标自带的底色压掉，统一垫一层磨砂后才像浮在玻璃上。
+.pluginIcon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  box-sizing: border-box;
+  border-radius: 13px;
+  background: linear-gradient(160deg, rgb(255 255 255 / 82%) 0%, rgb(255 255 255 / 34%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 96%),
+    inset 0 -1px 0 rgb(15 23 42 / 8%),
+    0 6px 14px -6px rgb(15 23 42 / 32%);
+  object-fit: contain;
+}
+
+.pluginIdentity {
+  min-width: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pluginName,
+.pluginId {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pluginName {
+  color: var(--vscode-foreground);
+  font-size: type.$font-size-base;
+  font-weight: 600;
+}
+
+.pluginId {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
+
+// 状态徽章做成小玻璃片，左侧留一个状态点：未配置是空心冷灰，已配置是实心绿点。
+.stateBadge {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  color: var(--vscode-descriptionForeground);
+  background: rgb(255 255 255 / 46%);
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 88%);
+  font-size: type.$font-size-2xs;
+  white-space: nowrap;
+
+  &::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    flex: 0 0 auto;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    opacity: 0.5;
+  }
+}
+
+.stateReady {
+  --badge-accent: var(--vscode-testing-iconPassed, #73c991);
+
+  color: color-mix(in srgb, var(--badge-accent) 78%, var(--vscode-foreground));
+  background: color-mix(in srgb, var(--badge-accent) 14%, rgb(255 255 255 / 52%));
+  border-color: color-mix(in srgb, var(--badge-accent) 26%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 90%),
+    0 2px 6px -3px color-mix(in srgb, var(--badge-accent) 60%, transparent);
+
+  &::before {
+    border: 0;
+    background: currentColor;
+    opacity: 0.85;
+  }
+}
+
+.pluginMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+
+  > button {
+    min-width: 0;
+    flex: 0 1 auto;
+    height: 26px;
+    min-height: 26px;
+    gap: 3px;
+    padding-inline: 10px;
+    border-radius: 8px;
+    font-size: type.$font-size-2xs;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+}
+
+// 主操作：纯色 accent + 一层内高光。
+// 之前堆了竖向白渐变 + 大落影，读起来像塑料按钮；玻璃材质里填充越"平"越像染色玻璃。
+.addAccount {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 24%),
+    inset 0 0 0 1px rgb(255 255 255 / 12%),
+    0 4px 10px -6px color-mix(in srgb, var(--vscode-button-background) 64%, transparent);
+
+  // .liquid::before 是一圈模糊过的深色描边，尺寸这么小的按钮上只剩一块脏晕。
+  &::before {
+    display: none;
+  }
+}
+
+// 次要操作与"更多"：无底色，只留文字。三颗同样重的胶囊并排才是这行看着乱的主因。
+.manageAccounts,
+.moreAction > button {
+  --liquid-bg: transparent;
+  --liquid-border: transparent;
+  --liquid-blur: 0px;
+
+  color: color-mix(in srgb, var(--vscode-foreground) 82%, transparent);
+  background: transparent;
+  box-shadow: none;
+  // 卡片自身是 backdrop root，残留的滤镜会把卡面重新染色，
+  // 边界就显出一块"白片"。文字按钮不需要任何滤镜。
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+
+  &::before {
+    display: none;
+  }
+
+  &:disabled {
+    color: color-mix(in srgb, var(--vscode-foreground) 36%, transparent);
+  }
+}
+
+
+// 主操作靠左,"更多"推到行尾,两端对齐。
+.moreAction {
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.gate,
+.empty {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--vscode-descriptionForeground);
+  text-align: center;
+  border: 1px dashed var(--vscode-sideBar-border);
+  border-radius: var(--oa-overlay-radius);
+
+  strong {
+    color: var(--vscode-foreground);
+    font-size: type.$font-size-base;
+  }
+
+  span {
+    max-width: 500px;
+    font-size: type.$font-size-xs;
+  }
+}
+
+.gate button {
+  margin-top: 6px;
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  border-radius: 999px;
+}
+
+// 反向斜纹(-45°)+ 无限反向滚动;未知总量时以 100% 宽度作不确定态。
+.progressFill {
+  height: 100%;
+  background-color: var(--vscode-progressBar-background, #0e70c0);
+  background-image: linear-gradient(
+    -45deg,
+    rgb(255 255 255 / 24%) 25%,
+    transparent 25% 50%,
+    rgb(255 255 255 / 24%) 50% 75%,
+    transparent 75%
+  );
+  background-size: 24px 24px;
+  border-radius: 999px;
+  transition: width 160ms ease;
+  animation: progress-stripes 0.7s linear infinite;
+}
+
+@keyframes progress-stripes {
+  to {
+    background-position: -24px 0;
+  }
+}
+
+.progressContent {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  strong {
+    font-size: type.$font-size-base;
+  }
+
+  span {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-xs;
+  }
+
+  .error {
+    color: var(--vscode-errorForeground);
+    overflow-wrap: anywhere;
+  }
+}

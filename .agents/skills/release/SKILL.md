@@ -1,77 +1,192 @@
 ---
 name: release
-description: Prepare, authorize, publish, troubleshoot, and verify Cursor BYOK desktop GitHub Releases. Use for version bumps, release tags, GitHub Actions release runs, updater manifests, signing, or release-readiness checks.
+description: Build and publish Cursor BYOK desktop releases through GitHub Actions. Use for version bumps, release tags, release workflow runs, updater manifests, signing keys, or diagnosing a failed release.
 ---
 
 # Desktop release
 
-Release through `.github/workflows/release.yml`. Preserve both updater formats: Tauri uses `latest.json`; legacy `v0.0.49` clients use `update.json`.
+Releases are built by `.github/workflows/release.yml` on GitHub-hosted runners and published as a GitHub Release.
+Local packaging is not available on this machine — see "Why CI builds only".
+
+## Why CI builds only
+
+The maintainer machine runs Windows Smart App Control in enforcement mode
+(`VerifiedAndReputablePolicyState=1`, policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`).
+Any newly compiled unsigned executable is refused before it starts:
+
+```text
+os error 4551 / Permission denied / "已被 Device Guard 阻止"
+```
+
+This is not path-, size-, or toolchain-specific: a `rustc`-compiled hello world fails the same way,
+on any volume. Binaries that already had reputation before SAC was enabled still run.
+Consequences:
+
+- `make build-desktop`, `cargo build --release`, and `tauri build` fail locally. Do not retry them.
+- `cargo fmt`, `cargo clippy`, and `cargo test` also fail locally, so Rust quality is not machine-checked.
+- `npm --prefix apps/desktop run build` works (Node, not a native binary) and is the only local gate.
+- Only `Smart App Control` being turned off (irreversible; requires admin + reboot) changes this.
+  Never suggest it as a routine workaround.
 
 ## Publication authority
 
-- Only the repository author, GitHub user `leookun`, may authorize a live release.
-- Before any live mutation, require an explicit release instruction from the author in the current task and verify `gh api user --jq .login` returns `leookun`.
-- Treat all of these as publication actions: pushing a `v*` tag, rerunning the release workflow, and publishing or editing a GitHub Release. Pushing a release commit to `main` only prepares the release and must never trigger publication by itself.
-- Without that authorization, restrict work to inspection, local edits, validation, and a release-ready commit or branch. Do not infer publication permission from requests such as “prepare”, “check”, or “ready to release”.
-- Never print, commit, or upload `.tauri/cursor-byok.key` anywhere except the repository's `TAURI_SIGNING_PRIVATE_KEY` Actions Secret when the author explicitly requests that secret configuration.
-- Never delete, replace, or move an existing tag or published Release without separate explicit authorization.
+- Only the repository owner, GitHub user `root462`, may publish. The workflow enforces this:
+  `GITHUB_ACTOR` must equal `REPOSITORY_OWNER`, otherwise `prepare` fails with
+  `Only root462 may publish a release`.
+- Treat these as publication actions and require an explicit instruction in the current task:
+  pushing a `v*` tag, re-running the release workflow, and publishing or editing a GitHub Release.
+- Never infer publication permission from words like "prepare", "check", or "ready to release".
+- Never print, commit, or upload the updater private key. It lives outside the repo.
 
-## Version and GitHub Release policy
+## Hard constraints from the workflow
 
-- Do not use GitHub prereleases. Keep `prerelease: false` for every release and publish the completed release as Latest.
-- Use `vMAJOR.MINOR.PATCH` for a stable tag, for example `v0.1.0`.
-- Use standard SemVer `vMAJOR.MINOR.PATCH-beta.N` for a test tag, for example `v0.1.0-beta.1`. A beta is still a normal GitHub Release, not a GitHub prerelease. Make its title or body visibly say Beta.
-- This normal-Release rule is required because both installed update clients resolve assets through GitHub's `/releases/latest/download/` path, which excludes GitHub prereleases.
-- Windows beta builds must use the NSIS bundle. WiX/MSI rejects nonnumeric prerelease identifiers such as `beta.1`; do not weaken the SemVer tag to accommodate MSI.
-- Release only from a `v*` tag whose commit is contained in `origin/main`. The tag must equal `v<version>` from the desktop manifests.
-- Keep ordinary `main` pushes and manual workflow dispatch disabled as release triggers. The author pushes the matching tag only after the release commit is present on `origin/main`.
-- Never republish an already published version. Select a new version instead.
+`prepare` verifies all of the following and fails the run on any mismatch:
+
+| Check | Requirement |
+|---|---|
+| Version match | `tauri.conf.json` version == `package.json` version == `Cargo.toml` version |
+| Tag match | Tag is `v<version>` with `GITHUB_REF_TYPE == tag` |
+| Commit ancestry | The tagged commit is contained in `origin/master` |
+| Signing secret | `TAURI_SIGNING_PRIVATE_KEY` is configured |
+| Idempotency | Version not already published (`gh release view v<version>` not non-draft) |
+
+Other rules:
+
+- Version is `MAJOR.MINOR.PATCH` only. Four-part numbers (`1.0.2.1`) are rejected by Cargo
+  (`unexpected character '.' after patch version number`), npm, and Tauri.
+- A prerelease keeps `prerelease: false` and is published as Latest; the release body just says Beta.
+  This is required because the updater resolves through `/releases/latest/download/`.
+- The repo's default branch is `master`, not `main`. The workflow hardcodes `origin/master`.
+- Never republish a published version. Bump the version instead.
 
 ## Release sources
 
-Keep the desktop version identical in the manifests and their locks:
+Keep the desktop version identical in all five spans:
 
 ```text
 cursor-byok/
-├── Cargo.lock
+├── Cargo.lock                                    # name = "cursor-byok-desktop" → version
 ├── apps/desktop/
-│   ├── package.json
-│   ├── package-lock.json
+│   ├── package.json                              # "version"
+│   ├── package-lock.json                         # top-level + packages[""].version (2 spans)
 │   └── src-tauri/
-│       ├── Cargo.toml
-│       └── tauri.conf.json
-├── scripts/cursor-proto/proto/
-│   ├── agent_v1.proto
-│   └── aiserver_v1.proto
-└── .github/workflows/release.yml
+│       ├── Cargo.toml                            # version =
+│       └── tauri.conf.json                       # "version"
+├── protocols/cursor/                             # committed build inputs for server/build.rs
+│   ├── agent_v1.proto                            # compiled by prost into Rust bindings
+│   └── aiserver_v1.proto                         # wire-contract assertions
+└── .github/
+    ├── workflows/release.yml                     # the whole pipeline
+    └── scripts/
+        ├── seed-bundler-tools.mjs                # preloads NSIS/AppRun via api.github.com
+        └── normalize-tauri-update.mjs            # rewrites latest.json asset URLs
 ```
 
-The two listed Proto files are required build inputs and must be committed. Keep the other locally extracted Proto files ignored unless the build starts depending on them.
+Self-check — all four lines must print the same value:
+
+```bash
+node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version"
+node -p "require('./apps/desktop/package.json').version"
+sed -n '/^version = / { s/version = "\([^"]*\)"/\1/p; q; }' apps/desktop/src-tauri/Cargo.toml
+node -p "require('./apps/desktop/package-lock.json').version"
+```
 
 ## Prepare and validate
 
-1. Inspect `git status`, fetch `origin/main`, and preserve unrelated user changes. Confirm the release commit is based on the current remote head.
-2. Choose stable or beta numbering explicitly. Update the desktop version in both manifests and lockfiles; do not change the independent `cursor-server` version merely to release the desktop app.
-3. Confirm the updater public key in `tauri.conf.json` matches `.tauri/cursor-byok.key.pub` without exposing the private key.
-4. Confirm `TAURI_SIGNING_PRIVATE_KEY` exists in GitHub Actions. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` must be absent when the local key has no password.
-5. Confirm neither the intended tag nor Release already exists.
-6. From `apps/desktop`, run:
+1. Inspect `git status`; preserve unrelated user changes and do not stage them.
+2. Bump the version in the five spans above. Do not touch the independent `cursor-server` version.
+3. Confirm the updater public key in `tauri.conf.json` still pairs with the private key before relying on it:
+   `C:/Users/FJZ15/AppData/Local/byok-signing.key` (no password) with `byok-signing.key.pub` beside it.
+   Compare key IDs rather than assuming:
 
    ```bash
-   npm run check
-   npm run tauri:build -- --debug --no-bundle
+   node -e "const fs=require('fs');
+   const keyId=b64=>Buffer.from(Buffer.from(b64.trim(),'base64').toString('latin1').trim().split(/\r?\n/)[1],'base64').subarray(2,10).toString('hex').toUpperCase();
+   const pub=keyId(fs.readFileSync('C:/Users/FJZ15/AppData/Local/byok-signing.key.pub','utf8'));
+   const conf=keyId(require('./apps/desktop/src-tauri/tauri.conf.json').plugins.updater.pubkey);
+   console.log(pub, conf, pub===conf);"
    ```
 
-7. Validate the workflow YAML and inspect the staged diff. Ensure `.tauri/`, unrelated local files, and unrelated user changes are not staged.
-8. Use the `tauri-action@v1` input `uploadUpdaterJson: true`; `includeUpdaterJson` is not a valid v1 input.
+   Both `.pub` and the configured `pubkey` are base64-of-a-minisign-file, so the value is decoded twice.
+
+4. Confirm neither the tag nor the Release already exists.
+5. Run the only local gate that works:
+
+   ```bash
+   npm --prefix apps/desktop run build
+   ```
+
+6. Stage only the release set and inspect the diff before committing.
 
 ## Publish and verify
 
-After the author explicitly authorizes publication:
+1. Push the release commit to `master` first:
 
-1. Commit only the reviewed release set and push it to `main`. Confirm the release commit is present in `origin/main`; this push must not start the release workflow.
-2. Create the matching tag on that commit, for example `v0.1.0-beta.1`, and push only that tag. This tag push is the publication trigger.
-3. Follow the triggered `Release desktop app` run through completion. Report the run URL and stop on failure; diagnose locally before asking the author to authorize another live attempt.
-4. Verify `v<version>` exists, is published rather than draft, has `prerelease: false`, and is the repository's Latest release.
-5. Verify the Release contains signed Tauri updater artifacts plus `latest.json`, and the legacy platform archives plus `update.json`.
-6. For a beta, report clearly that it is a test version even though GitHub represents it as a normal Latest Release.
+   ```bash
+   git push origin master
+   ```
+
+2. Create and push the tag. Order matters — `prepare` rejects a tag that is not yet an ancestor of
+   `origin/master`:
+
+   ```bash
+   git tag v1.0.4
+   GIT_SSH_COMMAND="ssh -p 443" git push git@ssh.github.com:root462/cursor-byok.git refs/tags/v1.0.4
+   ```
+
+   `github.com:443` and `api.github.com` intermittently time out or return 504 on this machine.
+   SSH on port 443 is the reliable path; plain `git push` through HTTPS often fails.
+
+3. Follow the run. It takes 25–40 minutes; `macos-x86_64` is always last.
+
+   ```text
+   Prepare release          → version/tag/ancestry/secret checks, idempotency
+   Publish (linux-x86_64)   → AppImage, .deb, .rpm
+   Publish (windows-x86_64) → NSIS installer
+   Publish (macos-aarch64)  → Apple Silicon
+   Publish (macos-x86_64)   → Intel
+   Publish GitHub Release   → collect assets, normalize latest.json, flip draft → latest
+   ```
+
+   Any failed `Publish` job prevents `finalize`; the Release stays a draft.
+
+4. Verify the Release:
+
+   ```bash
+   curl -sS -H 'user-agent: check' -o rel.json \
+     'https://api.github.com/repos/root462/cursor-byok/releases/tags/v1.0.4'
+   node -e "const r=require('./rel.json');
+   console.log('draft:',r.draft,'| prerelease:',r.prerelease);
+   r.assets.forEach(a=>console.log('  '+a.name+'  '+a.size+' bytes'));"
+   ```
+
+   Required: `draft: false`, `prerelease: false`, and assets covering `*-setup.exe` + `.sig`,
+   both macOS `.app.tar.gz`, the Linux AppImage/deb/rpm, the legacy per-platform archives, and `latest.json`.
+
+5. Verify the updater manifest — this is what existing users download:
+
+   ```bash
+   curl -sSL -o latest.json \
+     'https://github.com/root462/cursor-byok/releases/download/v1.0.4/latest.json'
+   node -e "const j=require('./latest.json');console.log('version:',j.version);
+   Object.entries(j.platforms).forEach(([k,v])=>console.log('  '+k+' -> '+v.url));"
+   ```
+
+   Every platform URL must point at the new version's assets and every signature must use the
+   key ID from step 3 of "Prepare". Delete both temp files afterwards.
+
+## Troubleshooting
+
+| Symptom | Cause | Action |
+|---|---|---|
+| `Only root462 may publish a release` | Tag pushed by another account | Push as the owner |
+| `Release tag must point to a commit contained in origin/master` | Tag pushed before `master` | Push `master`, then `git tag -f` + `git push --force` |
+| `Version x is already published; nothing to do.` | Idempotency guard | Expected; delete the Release and re-push the tag only with explicit authorization |
+| `Downloading .../nsis-3.11.zip -> http status: 504` | `github.com/.../releases/download/` outage | `seed-bundler-tools.mjs` already preloads via `api.github.com`; if it still fails, re-run the job |
+| `failed to read file '...\\permissions\\...toml': os error 3` | Stale `target/` built from an older checkout path | Delete the offending `target/release/build/<pkg>-*` and `.fingerprint/<pkg>-*` entries |
+| `os error 4551` locally | Smart App Control | Build on CI; do not fight it locally |
+
+If only some platforms are missing, do not re-push the tag. Use
+**Actions → Supplement desktop installers → Run workflow** with `version` (no `v`) and the full
+40-character `source_commit`. It builds only deb/AppImage/dmg/app and requires the Release to exist
+and be non-draft.

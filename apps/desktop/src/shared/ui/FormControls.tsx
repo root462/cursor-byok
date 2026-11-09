@@ -1,10 +1,10 @@
-import { useState, type InputHTMLAttributes } from "react";
+import { useState, type ComponentPropsWithRef, type InputHTMLAttributes } from "react";
 import { Icon } from "./Icon";
 import { TooltipTrigger } from "./TooltipTrigger";
 import { eyeIcon, eyeOffIcon, informationOutlineIcon } from "./icons";
 import styles from "./FormControls.module.scss";
 
-export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
+export function TextInput(props: ComponentPropsWithRef<"input">) {
   return <input {...props} className={[styles.input, props.className].filter(Boolean).join(" ")} />;
 }
 

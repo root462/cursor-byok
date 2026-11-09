@@ -22,6 +22,7 @@ use cursor_server::{
         transport::{TransportRegistry, TransportRoute},
     },
     network::NetworkClients,
+    plugin::{PluginRegistry, PluginRuntime},
     Error,
 };
 use prost::Message;
@@ -287,9 +288,13 @@ async fn setup() -> (
     let clients = NetworkClients::new(store.clone());
     // Match App::new: both routers must own clones of the registry's actual
     // RuntimeCompatibility, not independent default instances.
+    let runtime = PluginRuntime::managed().unwrap();
+    let plugins = PluginRegistry::managed(store.clone(), runtime.clone(), "0.1.0".into()).unwrap();
     let control = ControlService::new(
         store,
         Arc::new(provider.clone()),
+        runtime,
+        plugins,
         clients.clone(),
         registry.runtime_compatibility().clone(),
     )

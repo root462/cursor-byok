@@ -20,6 +20,7 @@ use cursor_server::{
         OPENAI_RESPONSES_ENDPOINT,
     },
     network::NetworkClients,
+    plugin::{PluginRegistry, PluginRuntime},
     provider::{FinishReason, ModelEvent, ProviderRouter},
     store::ExternalApiSettings,
 };
@@ -63,94 +64,26 @@ async fn setup() -> (
     store.create_model(&model_input()).await.unwrap();
     let provider = fake_provider::FakeProvider::default();
     let shared_provider = Arc::new(provider.clone());
+    let runtime = PluginRuntime::managed().unwrap();
+    let plugins = PluginRegistry::managed(store.clone(), runtime.clone(), "0.1.0".into()).unwrap();
     let control = control::ControlService::new(
         store.clone(),
         shared_provider.clone(),
+        runtime,
+        plugins.clone(),
         NetworkClients::new(store.clone()),
         Default::default(),
     )
     .unwrap();
-    let router =
-        byok::router(store.clone(), shared_provider, None).merge(control::api_router(control));
+    let router = byok::router(store.clone(), plugins, shared_provider, None)
+        .merge(control::api_router(control));
     (router, provider, store, directory)
 }
 
-/// Removed management features have no handlers, including runtime and image helpers.
-#[tokio::test]
-async fn removed_plugin_and_advertisement_routes_are_not_available() {
-    let (router, provider, _store, _directory) = setup().await;
-    for (method, path) in [
-        ("GET", "/__byok-api__/api/plugins"),
-        ("GET", "/__byok-api__/api/plugins/runtime"),
-        ("POST", "/__byok-api__/api/plugins/runtime"),
-        ("DELETE", "/__byok-api__/api/plugins/runtime"),
-        ("POST", "/__byok-api__/api/plugins/oauth/session/poll"),
-        ("DELETE", "/__byok-api__/api/plugins/example"),
-        (
-            "POST",
-            "/__byok-api__/api/plugins/example/resources/accounts/add/oauth/begin",
-        ),
-        (
-            "POST",
-            "/__byok-api__/api/plugins/example/resources/accounts/import",
-        ),
-        (
-            "GET",
-            "/__byok-api__/api/plugins/example/resources/accounts/export",
-        ),
-        (
-            "DELETE",
-            "/__byok-api__/api/plugins/example/resources/accounts/account",
-        ),
-        (
-            "POST",
-            "/__byok-api__/api/plugins/example/resources/accounts/account/actions/refresh",
-        ),
-        (
-            "POST",
-            "/__byok-api__/api/plugins/example/resources/accounts/account/refresh",
-        ),
-        (
-            "POST",
-            "/__byok-api__/api/plugins/example/providers/provider/models/sync",
-        ),
-        (
-            "PUT",
-            "/__byok-api__/api/plugins/example/providers/provider/models/enabled",
-        ),
-        ("GET", "/__byok-api__/api/promotions"),
-        ("GET", "/__byok-api__/api/promotions/images/image.png"),
-        ("POST", "/__byok-api__/api/promotions/example/dismissals"),
-    ] {
-        let (status, _) = send(router.clone(), method, path, None, json!({})).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
-    }
-    let (status, body) = send(
-        router.clone(),
-        "GET",
-        "/__byok-api__/api/models",
-        None,
-        json!({}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    let models: Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(models.as_array().unwrap().len(), 1);
-    assert_eq!(models[0]["model_id"], "qwen/model");
-    let (status, body) = send(
-        router,
-        "GET",
-        "/__byok-api__/api/settings/commit",
-        None,
-        json!({}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        serde_json::from_str::<Value>(&body).unwrap()["model_id"],
-        ""
-    );
-    assert!(provider.requests().is_empty());
+/// Builds the plugin registry the same way `App` does, for routers built outside `setup`.
+fn test_plugins(store: &cursor_server::store::Store) -> PluginRegistry {
+    PluginRegistry::managed(store.clone(), PluginRuntime::managed().unwrap(), "0.1.0".into())
+        .unwrap()
 }
 
 #[tokio::test]
@@ -299,8 +232,17 @@ async fn duplicate_public_model_ids_use_the_first_configured_model() {
         .unwrap()
         .iter()
         .map(|model| model["id"].as_str().unwrap())
+        .filter(|id| !id.starts_with("plugin:"))
         .collect::<Vec<_>>();
     assert_eq!(ids, ["work/qwen/model", "work/qwen/other"]);
+    assert!(
+        models["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|model| model["id"].as_str().unwrap().starts_with("plugin:")),
+        "bundled plugins contribute their own models: {body}"
+    );
 
     provider.push(vec![
         ModelEvent::TextDelta("ok".into()),
@@ -681,7 +623,7 @@ async fn all_entry_and_upstream_protocol_pairs_preserve_cache_usage() {
         .await
         .unwrap();
     let fake = fake_provider::FakeProvider::default();
-    let inner = byok::router(store.clone(), Arc::new(fake.clone()), None);
+    let inner = byok::router(store.clone(), test_plugins(&store), Arc::new(fake.clone()), None);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = tokio::spawn(async move { axum::serve(listener, inner).await.unwrap() });
@@ -709,12 +651,14 @@ async fn all_entry_and_upstream_protocol_pairs_preserve_cache_usage() {
     }
     let provider = ProviderRouter::new(
         store.clone(),
+        test_plugins(&store),
         NetworkClients::new(store.clone()),
         Duration::from_secs(10),
         Duration::from_secs(10),
     );
     let outer = byok::router(
         store.clone(),
+        test_plugins(&store),
         Arc::new(provider),
         Some(byok::NativeForwarder::new(
             store.clone(),
@@ -902,6 +846,7 @@ async fn matching_http_protocols_forward_native_requests_and_responses() {
             let (status, body) = send(
                 byok::router(
                     store.clone(),
+                    test_plugins(&store),
                     Arc::new(fake_provider::FakeProvider::default()),
                     Some(byok::NativeForwarder::new(
                         store.clone(),
@@ -942,6 +887,7 @@ async fn matching_http_protocols_forward_native_requests_and_responses() {
     let (status, body) = send(
         byok::router(
             store.clone(),
+            test_plugins(&store),
             Arc::new(fake_provider::FakeProvider::default()),
             Some(byok::NativeForwarder::new(
                 store.clone(),

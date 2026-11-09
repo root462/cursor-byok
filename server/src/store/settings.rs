@@ -18,8 +18,6 @@ const EXTERNAL_API_SETTINGS_KEY: &str = "external_api";
 pub const DEFAULT_COMMIT_PROMPT_ZH_CN: &str = include_str!("../../prompt/cursor/commit/zh-CN.md");
 pub const DEFAULT_COMMIT_PROMPT_EN_US: &str = include_str!("../../prompt/cursor/commit/en-US.md");
 
-pub const PUBLIC_TAB_SERVICE_URL: &str = "https://tab.leokun.cn";
-
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct PortSettings {
     pub proxy_port: u16,
@@ -65,19 +63,34 @@ impl ProxyMode {
     }
 }
 
+/// How Cursor TAB RPCs are routed.
+///
+/// `Direct` talks to the official Cursor endpoint, `Custom` forwards the
+/// original RPCs to a user-provided compatible TAB service, `Local` answers
+/// `StreamCpp` on this machine with a configured model.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TabMode {
     #[default]
-    Public,
     Direct,
     Custom,
+    Local,
 }
 
+/// User-provided TAB service or locally served completion.
+///
+/// `api_key` and `address` only apply to `Custom`: the key authenticates the
+/// forwarded RPCs, the address is the service base URL. `model` selects which
+/// model that service runs, and in `Local` mode names the configured model that
+/// answers the completion on this machine.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct TabSettings {
     pub mode: TabMode,
     pub address: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default)]
+    pub model: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -104,10 +117,13 @@ fn default_true() -> bool {
 impl TabSettings {
     pub fn service_url(&self) -> Option<&str> {
         match self.mode {
-            TabMode::Public => Some(PUBLIC_TAB_SERVICE_URL),
-            TabMode::Direct => None,
+            TabMode::Direct | TabMode::Local => None,
             TabMode::Custom => Some(&self.address),
         }
+    }
+
+    pub fn is_local(&self) -> bool {
+        self.mode == TabMode::Local
     }
 }
 
@@ -147,8 +163,8 @@ impl<'de> Deserialize<'de> for CommitPromptLocale {
 /// User preferences for Git commit message generation.
 ///
 /// Empty `model_id` means 直连: forward the original Cursor RPC unchanged.
-/// A non-empty value is the stable identifier of a configured model, and the
-/// request is generated locally through that model.
+/// A non-empty value is the stable identifier of a configured built-in or
+/// plugin model, and the request is generated locally through that model.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct CommitSettings {
     #[serde(default)]
@@ -214,6 +230,19 @@ fn read_proxy_settings(value: &str) -> ProxySettingsSecret {
     serde_json::from_str(value).unwrap_or_else(|error| {
         tracing::warn!(%error, "ignoring unreadable outbound proxy settings");
         ProxySettingsSecret::default()
+    })
+}
+
+/// Reads the persisted TAB row, falling back to 直连 when it no longer parses.
+///
+/// A row written by a build that still offered the bundled public service
+/// stores `mode: "public"`, which this build no longer knows. Failing the read
+/// would take down every TAB request and the settings page at once, so the row
+/// degrades to 直连 and stays replaceable from the settings page.
+fn read_tab_settings(value: &str) -> TabSettings {
+    serde_json::from_str(value).unwrap_or_else(|error| {
+        tracing::warn!(%error, "ignoring unreadable TAB settings");
+        TabSettings::default()
     })
 }
 
@@ -346,14 +375,30 @@ impl Store {
         .bind(TAB_SETTINGS_KEY)
         .fetch_optional(&self.pool)
         .await?;
-        value
-            .map(|value| serde_json::from_str(&value).map_err(Into::into))
-            .unwrap_or_else(|| Ok(TabSettings::default()))
+        Ok(value
+            .as_deref()
+            .map_or_else(TabSettings::default, read_tab_settings))
     }
 
     pub async fn set_tab_settings(&self, mut settings: TabSettings) -> Result<TabSettings> {
         settings.address = settings.address.trim().trim_end_matches('/').to_owned();
+        settings.api_key = settings.api_key.trim().to_owned();
+        settings.model = settings.model.trim().to_owned();
+        if settings.mode == TabMode::Local {
+            if settings.model.is_empty() {
+                return Err(crate::Error::Config(
+                    "TAB local mode requires a configured model".into(),
+                ));
+            }
+            settings.address.clear();
+            settings.api_key.clear();
+        }
         if settings.mode == TabMode::Custom {
+            if settings.address.is_empty() {
+                return Err(crate::Error::Config(
+                    "TAB service address is required when custom routing is enabled".into(),
+                ));
+            }
             let parsed = url::Url::parse(&settings.address).map_err(|error| {
                 crate::Error::Config(format!("invalid TAB service address: {error}"))
             })?;
@@ -510,9 +555,10 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::{
-        read_proxy_settings, CommitPromptLocale, CommitSettings, ExternalApiSettings, ProxyMode,
-        ProxySettingsInput, ProxySettingsSecret, Store, TokenPricingSettings,
-        DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN, PROXY_SETTINGS_KEY,
+        read_proxy_settings, read_tab_settings, CommitPromptLocale, CommitSettings,
+        ExternalApiSettings, ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store, TabMode,
+        TabSettings, TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US,
+        DEFAULT_COMMIT_PROMPT_ZH_CN, PROXY_SETTINGS_KEY, TAB_SETTINGS_KEY,
     };
 
     /// The `outbound_proxy` row exactly as builds before the `system` -> `default`
@@ -623,6 +669,94 @@ mod tests {
             .unwrap();
         assert_eq!(saved.mode, ProxyMode::Custom);
         assert_eq!(saved.address, "http://127.0.0.1:7890");
+    }
+
+    /// The `cursor_tab` row exactly as builds that still shipped the bundled
+    /// public service wrote it.
+    const PUBLIC_TAB_ROW: &str = r#"{"mode":"public","address":""}"#;
+
+    #[test]
+    fn a_tab_row_from_the_public_service_build_reads_as_direct() {
+        assert!(serde_json::from_str::<TabSettings>(PUBLIC_TAB_ROW).is_err());
+
+        let settings = read_tab_settings(PUBLIC_TAB_ROW);
+        assert_eq!(settings.mode, TabMode::Direct);
+        assert_eq!(settings.service_url(), None);
+    }
+
+    #[tokio::test]
+    async fn tab_settings_persist_the_service_key_and_model() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, 0)",
+        )
+        .bind(TAB_SETTINGS_KEY)
+        .bind(PUBLIC_TAB_ROW)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+        // The legacy row must not block the settings page from replacing it.
+        assert_eq!(store.tab_settings().await.unwrap().mode, TabMode::Direct);
+
+        let saved = store
+            .set_tab_settings(TabSettings {
+                mode: TabMode::Custom,
+                address: " https://tab.example.com/ ".into(),
+                api_key: " tab-key ".into(),
+                model: " qwen3-coder ".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(saved.address, "https://tab.example.com");
+        assert_eq!(saved.api_key, "tab-key");
+        assert_eq!(saved.model, "qwen3-coder");
+        assert_eq!(
+            store.tab_settings().await.unwrap().service_url(),
+            Some("https://tab.example.com")
+        );
+
+        assert!(store
+            .set_tab_settings(TabSettings {
+                mode: TabMode::Custom,
+                address: "  ".into(),
+                ..TabSettings::default()
+            })
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn local_tab_requires_a_model_and_clears_service_credentials() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        assert!(store
+            .set_tab_settings(TabSettings {
+                mode: TabMode::Local,
+                ..TabSettings::default()
+            })
+            .await
+            .is_err());
+
+        let saved = store
+            .set_tab_settings(TabSettings {
+                mode: TabMode::Local,
+                address: " https://tab.example.com ".into(),
+                api_key: " tab-key ".into(),
+                model: " step-5-preview ".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(saved.model, "step-5-preview");
+        assert!(saved.address.is_empty());
+        assert!(saved.api_key.is_empty());
+        assert!(saved.is_local());
+        assert_eq!(saved.service_url(), None);
+        assert!(store.tab_settings().await.unwrap().is_local());
     }
 
     #[tokio::test]

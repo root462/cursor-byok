@@ -13,7 +13,7 @@ use crate::store::{
     TokenPricingSettings,
 };
 
-use super::{ControlService, ObservabilitySettings};
+use super::{ControlService, DiscoveredModels, ObservabilitySettings, TabModelDiscoveryInput};
 
 pub async fn get(State(service): State<ControlService>) -> Result<Json<ObservabilitySettings>> {
     Ok(Json(service.observability().await?))
@@ -92,6 +92,13 @@ pub async fn update_tab(
     Json(settings): Json<TabSettings>,
 ) -> Result<Json<TabSettings>> {
     Ok(Json(service.set_tab_settings(settings).await?))
+}
+
+pub async fn discover_tab_models(
+    State(service): State<ControlService>,
+    Json(input): Json<TabModelDiscoveryInput>,
+) -> Result<Json<DiscoveredModels>> {
+    Ok(Json(service.discover_tab_models(&input).await?))
 }
 
 pub async fn get_desktop(State(service): State<ControlService>) -> Result<Json<DesktopSettings>> {

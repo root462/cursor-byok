@@ -37,6 +37,24 @@
   width: min(320px, 50%);
 }
 
+.modelControl {
+  width: min(420px, 60%);
+}
+
+.fieldError {
+  display: block;
+  margin-top: 5px;
+  color: var(--vscode-errorForeground, #f48771);
+  font-size: type.$font-size-xs;
+}
+
+.fieldHint {
+  display: block;
+  margin-top: 5px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
 .value {
   min-width: 0;
   max-width: 70%;
@@ -62,6 +80,12 @@
   gap: 6px;
 }
 
+.discoverButton {
+  min-height: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+}
+
 @media (max-width: 680px) {
   .row {
     align-items: stretch;
@@ -70,6 +94,7 @@
   }
 
   .control,
+  .modelControl,
   .value {
     width: 100%;
     max-width: none;
