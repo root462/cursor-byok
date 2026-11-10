@@ -1,0 +1,165 @@
+.dynamicBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.backdropBase {
+  position: absolute;
+  inset: 0;
+  background-image: url("../assets/Harmony.jpg");
+  background-repeat: no-repeat;
+  background-size: auto 130%;
+  background-position: center 78%;
+}
+
+.backdropMesh {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  filter: blur(52px);
+  opacity: 0.95;
+  transform: translateZ(0);
+}
+
+.backdropVeil {
+  position: absolute;
+  inset: 0;
+  background: var(--app-backdrop-veil, transparent);
+  pointer-events: none;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 44% 56% 65% 35% / 48% 42% 58% 52%;
+  pointer-events: none;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+.orb1 {
+  width: max(480px, 40vw);
+  height: max(480px, 40vw);
+  left: -4vw;
+  top: 10vh;
+  background: radial-gradient(circle at 40% 40%, rgba(255, 95, 145, 0.78) 0%, rgba(255, 140, 180, 0.48) 45%, rgba(255, 185, 210, 0) 72%);
+  animation: orbFloat1 11s ease-in-out infinite alternate;
+}
+
+.orb2 {
+  width: max(520px, 44vw);
+  height: max(520px, 44vw);
+  left: 2vw;
+  bottom: -8vh;
+  background: radial-gradient(circle at 50% 50%, rgba(56, 180, 255, 0.75) 0%, rgba(96, 175, 255, 0.45) 45%, rgba(160, 215, 255, 0) 72%);
+  animation: orbFloat2 13s ease-in-out infinite alternate;
+}
+
+.orb3 {
+  width: max(540px, 45vw);
+  height: max(540px, 45vw);
+  right: -6vw;
+  top: -10vh;
+  background: radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.72) 0%, rgba(195, 130, 255, 0.42) 45%, rgba(225, 185, 255, 0) 72%);
+  animation: orbFloat3 15s ease-in-out infinite alternate;
+}
+
+.orb4 {
+  width: max(480px, 38vw);
+  height: max(480px, 38vw);
+  right: 8vw;
+  bottom: -6vh;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 150, 75, 0.72) 0%, rgba(255, 190, 115, 0.42) 45%, rgba(255, 225, 175, 0) 72%);
+  animation: orbFloat4 12s ease-in-out infinite alternate;
+}
+
+.orb5 {
+  width: max(460px, 36vw);
+  height: max(460px, 36vw);
+  left: 32vw;
+  top: 22vh;
+  background: radial-gradient(circle at 50% 50%, rgba(20, 220, 200, 0.65) 0%, rgba(55, 230, 215, 0.38) 45%, rgba(130, 245, 235, 0) 72%);
+  animation: orbFloat5 17s ease-in-out infinite alternate;
+}
+
+@keyframes orbFloat1 {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate3d(140px, 70px, 0) rotate(120deg) scale(1.12);
+  }
+  66% {
+    transform: translate3d(60px, 150px, 0) rotate(240deg) scale(0.94);
+  }
+  100% {
+    transform: translate3d(180px, 50px, 0) rotate(360deg) scale(1.08);
+  }
+}
+
+@keyframes orbFloat2 {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate3d(160px, -90px, 0) rotate(-110deg) scale(1.08);
+  }
+  66% {
+    transform: translate3d(80px, -160px, 0) rotate(-220deg) scale(0.92);
+  }
+  100% {
+    transform: translate3d(200px, -60px, 0) rotate(-360deg) scale(1.1);
+  }
+}
+
+@keyframes orbFloat3 {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate3d(-130px, 100px, 0) rotate(115deg) scale(0.93);
+  }
+  66% {
+    transform: translate3d(-210px, 50px, 0) rotate(230deg) scale(1.1);
+  }
+  100% {
+    transform: translate3d(-90px, 140px, 0) rotate(360deg) scale(1.02);
+  }
+}
+
+@keyframes orbFloat4 {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate3d(-110px, -110px, 0) rotate(-120deg) scale(1.12);
+  }
+  66% {
+    transform: translate3d(-170px, -40px, 0) rotate(-240deg) scale(0.93);
+  }
+  100% {
+    transform: translate3d(-80px, -150px, 0) rotate(-360deg) scale(1.06);
+  }
+}
+
+@keyframes orbFloat5 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.92);
+  }
+  50% {
+    transform: translate3d(-120px, 90px, 0) scale(1.15);
+  }
+  100% {
+    transform: translate3d(110px, -70px, 0) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb {
+    animation: none !important;
+  }
+}

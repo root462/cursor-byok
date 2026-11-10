@@ -14,6 +14,7 @@ type ModalProps = {
   wide?: boolean;
   compact?: boolean;
   fullHeight?: boolean;
+  square?: boolean;
   role?: "dialog" | "alertdialog";
   ariaDescribedBy?: string;
   initialFocus?: "first" | "submit";
@@ -21,7 +22,9 @@ type ModalProps = {
   onSubmit?: () => void;
   secondaryAction?: ReactNode;
   closeLabel?: string;
+  closeVariant?: "primary" | "secondary" | "danger";
   submitLabel?: string;
+  submitVariant?: "primary" | "secondary";
   submitDisabled?: boolean;
 };
 
@@ -42,7 +45,7 @@ function focusableElements(root: HTMLElement) {
 /** 与 Modal.module.scss 里 oa-dialog-out 的时长保持一致。 */
 const CLOSE_ANIMATION_MS = 170;
 
-export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), submitLabel = t("保存"), submitDisabled = false }: ModalProps) {
+export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, square, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), closeVariant = "secondary", submitLabel = t("保存"), submitVariant = "primary", submitDisabled = false }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(onClose);
@@ -111,14 +114,14 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
   if (!render) return null;
   return createPortal(<div className={styles.mask} data-state={closing ? "closing" : "open"}>
     <div className={styles.dragLayer} data-tauri-drag-region aria-hidden="true" />
-    <div id={id} ref={dialog} className={[styles.dialog, wide && styles.wide, compact && styles.compact, fullHeight && styles.fullHeight].filter(Boolean).join(" ")} role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={ariaDescribedBy} tabIndex={-1}>
+    <div id={id} ref={dialog} className={[styles.dialog, wide && styles.wide, compact && styles.compact, fullHeight && styles.fullHeight, square && styles.square].filter(Boolean).join(" ")} role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={ariaDescribedBy} tabIndex={-1}>
       <header id={titleId}>{title}</header>
       {banner && <div className={styles.banner}>{banner}</div>}
       <ScrollableContent alwaysShowVertical className={styles.body} contentClassName={styles.bodyContent}>{children}</ScrollableContent>
       <footer>
-        <button type="button" className={controls.primary} disabled={busy} onClick={onClose}>{closeLabel}</button>
         {secondaryAction}
-        {onSubmit && <button ref={submitButton} type="button" className={controls.primary} disabled={busy || submitDisabled} onClick={onSubmit}>{busy ? t("处理中…") : submitLabel}</button>}
+        {onClose && <button type="button" className={[controls[closeVariant], styles.footerButton].filter(Boolean).join(" ")} disabled={busy} onClick={onClose}>{closeLabel}</button>}
+        {onSubmit && <button ref={submitButton} type="button" className={[controls[submitVariant], styles.footerButton].filter(Boolean).join(" ")} disabled={busy || submitDisabled} onClick={onSubmit}>{busy ? t("处理中…") : submitLabel}</button>}
       </footer>
     </div>
   </div>, document.body);

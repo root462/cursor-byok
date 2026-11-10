@@ -29,3 +29,10 @@
   background: #ef4444;
   border-radius: 50%;
 }
+
+.actionGroup {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+}

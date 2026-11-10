@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   api,
   pluginText,
   type PluginAddMethod,
   type PluginDescriptor,
+  type PluginImportFile,
+  type PluginModelDescriptor,
   type PluginOAuthBegin,
   type PluginProviderDescriptor,
   type PluginResourceAction,
@@ -18,6 +20,9 @@ import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
+import { Icon } from "../../shared/ui/Icon";
+import { claudeIcon, openAiIcon } from "../../shared/ui/icons";
+import { useMessage } from "../../shared/ui/message";
 import { Modal } from "../../shared/ui/Modal";
 import { Switch } from "../../shared/ui/Switch";
 import styles from "./PluginResourcePanels.module.scss";
@@ -41,6 +46,14 @@ function ResourceAddSection({ plugin, resource, onConfigured }: {
   resource: PluginResourceDescriptor;
   onConfigured: () => void;
 }) {
+  if (plugin.id === "dev.cursorbyok.plugins.opencode-auth") {
+    return <OpencodeLoginCard
+      pluginId={plugin.id}
+      resource={resource}
+      onConfigured={onConfigured}
+    />;
+  }
+  const hasOAuth = resource.add.length > 0;
   return <>
     {resource.add.map((method) => <OAuthMethodCard
       key={method.id}
@@ -49,7 +62,164 @@ function ResourceAddSection({ plugin, resource, onConfigured }: {
       method={method}
       onConfigured={onConfigured}
     />)}
+    {!hasOAuth && resource.import && <ImportResourceCard
+      pluginId={plugin.id}
+      resource={resource}
+      onConfigured={onConfigured}
+    />}
   </>;
+}
+
+function ImportResourceCard({ pluginId, resource, onConfigured }: {
+  pluginId: string;
+  resource: PluginResourceDescriptor;
+  onConfigured: () => void;
+}) {
+  const { locale } = useI18n();
+  const importInput = useRef<HTMLInputElement>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const importFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const entries: PluginImportFile[] = await Promise.all(
+        [...files].map(async (file) => ({ name: file.name, content: await file.text() })),
+      );
+      const result = await api.importPluginResources(pluginId, resource.type, entries);
+      await appStore.refreshPlugins();
+      if (result.modelSyncError) {
+        setError(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }));
+        return;
+      }
+      setSuccess(true);
+      onConfigured();
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setSubmitting(false);
+      if (importInput.current) importInput.current.value = "";
+    }
+  };
+
+  const submitKey = async () => {
+    const trimmed = apiKey.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await api.importPluginResources(pluginId, resource.type, [
+        { name: "API Key", content: trimmed },
+      ]);
+      await appStore.refreshPlugins();
+      if (result.modelSyncError) {
+        setError(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }));
+        return;
+      }
+      setSuccess(true);
+      onConfigured();
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const title = resource.import ? pluginText(resource.import.displayName, locale) : t("导入凭证");
+  const description = resource.import?.description ? pluginText(resource.import.description, locale) : null;
+
+  return <Card className={styles.methodCard}>
+    <strong>{title}</strong>
+    {description && <span>{description}</span>}
+    <div className={styles.keyInputRow}>
+      <input
+        type="password"
+        className={styles.keyInput}
+        placeholder={t("粘贴 API Key（或导入凭证文件）")}
+        value={apiKey}
+        disabled={submitting}
+        onChange={(event) => setApiKey(event.target.value)}
+        onKeyDown={(event) => { if (event.key === "Enter") void submitKey(); }}
+      />
+      <Button
+        variant="primary"
+        disabled={submitting || !apiKey.trim()}
+        onClick={() => void submitKey()}
+      >
+        {submitting ? t("保存中…") : t("保存凭证")}
+      </Button>
+    </div>
+    <div className={styles.actions}>
+      <Button disabled={submitting} onClick={() => importInput.current?.click()}>
+        {t("选择文件导入…")}
+      </Button>
+      <input
+        ref={importInput}
+        type="file"
+        hidden
+        accept={resource.import?.accept.join(",")}
+        multiple={resource.import?.multiple ?? false}
+        onChange={(event) => void importFiles(event.target.files)}
+      />
+    </div>
+    {success && <span className={styles.success}>{t("账号已保存，模型目录已同步。")}</span>}
+    {error && <span className={styles.error} role="alert">{error}</span>}
+  </Card>;
+}
+
+function OpencodeLoginCard({ pluginId, resource, onConfigured }: {
+  pluginId: string;
+  resource: PluginResourceDescriptor;
+  onConfigured: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const startLogin = async () => {
+    setSubmitting(true);
+    setError(null);
+    void api.openExternalUrl("https://opencode.ai/auth").catch(() => undefined);
+    try {
+      const result = await api.importPluginResources(pluginId, resource.type, [
+        { name: "guest", content: "guest" },
+      ]);
+      await appStore.refreshPlugins();
+      if (result.modelSyncError) {
+        setError(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }));
+        return;
+      }
+      setSuccess(true);
+      onConfigured();
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return <Card className={styles.methodCard}>
+    <strong>{t("使用 OpenCode 账号登录")}</strong>
+    <span>{t("通过官方 OpenCode 协议接入，使用 OpenCode 模型。")}</span>
+    <div className={styles.actions}>
+      <Button
+        variant="primary"
+        disabled={submitting}
+        onClick={() => void startLogin()}
+      >
+        {submitting ? t("正在登录…") : t("开始登录")}
+      </Button>
+    </div>
+    <small className={styles.spoofHint}>
+      {t("* 采用官方 OpenCode 客户端协议伪装接入，自动注入客户端指纹与动态会话标识。")}
+    </small>
+    {success && <span className={styles.success}>{t("账号已保存，模型目录已同步。")}</span>}
+    {error && <span className={styles.error} role="alert">{error}</span>}
+  </Card>;
 }
 
 function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
@@ -230,12 +400,24 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
       provider={modelProvider}
       busy={busy !== null}
       onClose={() => setModelProviderId(null)}
-      onSubmit={(enabledByModel) => void run("models", async () => {
-        for (const model of modelProvider.models) {
-          const enabled = enabledByModel[model.id] ?? model.enabled;
-          if (model.enabled !== enabled) await api.setPluginModelEnabled(plugin.id, modelProvider.id, model.modelId, enabled);
-        }
-      })}
+      onSubmit={(enabledByModel, effortByModel) => {
+        setModelProviderId(null);
+        void run("models", async () => {
+          for (const model of modelProvider.models) {
+            const enabled = enabledByModel[model.id] ?? model.enabled;
+            const efforts = model.reasoningEfforts ?? [];
+            const defaultEffort = efforts.length > 0
+              ? (model.reasoningEffort ?? (efforts.includes("high") ? "high" : efforts[0] ?? null))
+              : null;
+            const nextEffort = efforts.length > 0
+              ? (effortByModel[model.id] ?? defaultEffort)
+              : null;
+            if (model.enabled !== enabled || (model.reasoningEffort ?? null) !== nextEffort) {
+              await api.setPluginModelEnabled(plugin.id, modelProvider.id, model.modelId, enabled, nextEffort);
+            }
+          }
+        });
+      }}
     />}
     {resourceAction && <ResourceActionModal
       action={resourceAction.resource.actions.find((item) => item.target === "resource") ?? null}
@@ -258,18 +440,24 @@ function ProviderRow({ provider, busy, syncing, onManageModels, onSync }: {
 }) {
   const { locale } = useI18n();
   return <Card className={styles.providerRow}>
-    <div>
-      <strong>{pluginText(provider.displayName, locale)}</strong>
-      <span>
-        {provider.providerType}
-        {" · "}
-        {provider.models.length > 0 ? t("{count} 个模型", { count: provider.models.length }) : t("尚未同步模型")}
-        {" · "}
-        {provider.configured ? t("可调用") : t("未就绪")}
-      </span>
+    <div className={styles.rowMain}>
+      <div className={styles.rowTitleWrap}>
+        <strong className={styles.rowTitle}>{pluginText(provider.displayName, locale)}</strong>
+      </div>
+      <div className={styles.rowMeta}>
+        <span className={styles.rowMetaTag}>{provider.providerType}</span>
+        <span className={styles.rowMetaDivider}>·</span>
+        <span>
+          {provider.models.length > 0 ? t("{count} 个模型", { count: provider.models.length }) : t("尚未同步模型")}
+        </span>
+        <span className={styles.rowMetaDivider}>·</span>
+        <span className={provider.configured ? styles.metaAvailable : styles.metaPending}>
+          {provider.configured ? t("可调用") : t("未就绪")}
+        </span>
+      </div>
     </div>
     {provider.hasModels && <div className={styles.actions}>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={onManageModels}>{t("模型管理")}</Button>
+      <Button variant="primary" size="small" disabled={busy || provider.models.length === 0} onClick={onManageModels}>{t("模型管理")}</Button>
       <Button size="small" disabled={busy} onClick={onSync}>
         {syncing ? t("正在同步…") : t("同步模型")}
       </Button>
@@ -277,57 +465,317 @@ function ProviderRow({ provider, busy, syncing, onManageModels, onSync }: {
   </Card>;
 }
 
+const EFFORT_ORDER = ["low", "medium", "high", "tiered"] as const;
+const ID_EFFORT_RE = /-(low|medium|high|tiered)$/i;
+const NAME_EFFORT_RE = /\s*\((low|medium|high|tiered)\)$/i;
+
+type ConsolidatedModelItem = {
+  key: string;
+  baseModelId: string;
+  displayName: string;
+  description: string | null;
+  icon: string;
+  efforts: string[];
+  defaultEffort: string | null;
+  enabled: boolean;
+  members: PluginModelDescriptor[];
+  variantByEffort: Record<string, PluginModelDescriptor>;
+};
+
+function consolidateProviderModels(models: PluginModelDescriptor[]): ConsolidatedModelItem[] {
+  const map = new Map<string, ConsolidatedModelItem>();
+  for (const model of models) {
+    const idMatch = model.modelId.match(ID_EFFORT_RE);
+    const nameMatch = model.displayName.match(NAME_EFFORT_RE);
+    const tier = (idMatch?.[1] ?? nameMatch?.[1])?.toLowerCase() ?? null;
+    const baseModelId = idMatch ? model.modelId.slice(0, -idMatch[0].length) : model.modelId;
+    const displayName = model.displayName.replace(NAME_EFFORT_RE, "").trim() || model.displayName;
+    const groupKey = displayName.toLowerCase();
+    const slug = displayName.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "");
+    const modelEfforts = model.reasoningEfforts ?? [];
+
+    let group = map.get(groupKey);
+    if (!group) {
+      const initialEfforts = new Set<string>(modelEfforts.map((item) => item.toLowerCase()));
+      const variantByEffort: Record<string, PluginModelDescriptor> = {};
+      if (tier) {
+        initialEfforts.add(tier);
+        variantByEffort[tier] = model;
+      }
+      const efforts = EFFORT_ORDER.filter((item) => initialEfforts.has(item));
+      group = {
+        key: groupKey,
+        baseModelId,
+        displayName,
+        description: model.description,
+        icon: model.icon,
+        efforts,
+        defaultEffort: defaultModelEffort(efforts, model.reasoningEffort),
+        enabled: model.enabled,
+        members: [model],
+        variantByEffort,
+      };
+      map.set(groupKey, group);
+    } else {
+      group.members.push(model);
+      if (baseModelId.toLowerCase() === slug && group.baseModelId.toLowerCase() !== slug) {
+        group.baseModelId = baseModelId;
+      }
+      if (!group.description && model.description) {
+        group.description = model.description;
+      }
+      group.enabled = group.enabled || model.enabled;
+      const merged = new Set<string>(group.efforts);
+      for (const item of modelEfforts) merged.add(item.toLowerCase());
+      if (tier) {
+        merged.add(tier);
+        group.variantByEffort[tier] = model;
+      }
+      const variantKeys = Object.keys(group.variantByEffort);
+      const source = variantKeys.length > 1 ? new Set(variantKeys) : merged;
+      group.efforts = EFFORT_ORDER.filter((item) => source.has(item));
+      group.defaultEffort = defaultModelEffort(group.efforts, model.reasoningEffort ?? group.defaultEffort);
+    }
+  }
+  return [...map.values()];
+}
+
+function defaultModelEffort(efforts: string[] | undefined, configured: string | null | undefined): string | null {
+  if (!efforts || efforts.length === 0) return null;
+  if (configured && efforts.includes(configured)) return configured;
+  return efforts.includes("high") ? "high" : efforts[0] ?? null;
+}
+
+function formatEffortLabel(effort: string): string {
+  const lower = effort.toLowerCase();
+  if (lower === "xhigh") return "XHigh";
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function EffortSlider({ efforts, value, disabled, onChange }: {
+  efforts: string[];
+  value: string | null;
+  disabled: boolean;
+  onChange: (effort: string) => void;
+}) {
+  const index = Math.max(0, efforts.indexOf(value ?? efforts[0] ?? ""));
+  const max = Math.max(1, efforts.length - 1);
+  const ratio = efforts.length > 1 ? index / max : 1;
+  const currentLabel = value ? formatEffortLabel(value) : "";
+
+  return <div
+    className={styles.modelCardEffort}
+    onClick={(event) => event.stopPropagation()}
+    onPointerDown={(event) => event.stopPropagation()}
+  >
+    <div className={styles.effortHeader}>
+      <span className={styles.effortLabel}>{t("思考强度")}</span>
+      <span className={styles.effortValue}>{currentLabel}</span>
+    </div>
+    <div
+      className={styles.effortSliderWrap}
+      style={{ "--effort-ratio": ratio } as CSSProperties}
+    >
+      <div className={styles.effortTrack} aria-hidden="true">
+        <div className={styles.effortFill} />
+        {efforts.map((effort, i) => {
+          const tickRatio = efforts.length > 1 ? i / max : 1;
+          return <span
+            key={effort}
+            className={styles.effortTick}
+            data-passed={i < index || undefined}
+            style={{ "--tick-ratio": tickRatio } as CSSProperties}
+          />;
+        })}
+      </div>
+      <span className={styles.effortThumb} aria-hidden="true" />
+      <input
+        type="range"
+        className={styles.effortRange}
+        min={0}
+        max={max}
+        step={1}
+        disabled={disabled || efforts.length <= 1}
+        value={index}
+        aria-label={t("思考强度")}
+        aria-valuetext={currentLabel}
+        onChange={(event) => {
+          const next = efforts[Number(event.target.value)];
+          if (next) onChange(next);
+        }}
+      />
+    </div>
+  </div>;
+}
+
+function ModelAvatar({ modelId, displayName, icon }: { modelId: string; displayName: string; icon: string }) {
+  const text = `${modelId} ${displayName}`;
+  if (/claude/i.test(text)) {
+    return <span className={styles.modelIcon} aria-hidden="true">
+      <Icon icon={claudeIcon} size="1.5em" />
+    </span>;
+  }
+  if (/\b(gpt|o1|o3|o4)\b/i.test(text)) {
+    return <span className={styles.modelIcon} aria-hidden="true">
+      <Icon icon={openAiIcon} size="1.5em" />
+    </span>;
+  }
+  if (!icon) return null;
+  return <img className={styles.modelIcon} src={icon} alt="" />;
+}
+
 function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
   provider: PluginProviderDescriptor;
   busy: boolean;
   onClose: () => void;
-  onSubmit: (enabledByModel: Record<string, boolean>) => void;
+  onSubmit: (enabledByModel: Record<string, boolean>, effortByModel: Record<string, string | null>) => void;
 }) {
   const { locale } = useI18n();
-  const [enabledByModel, setEnabledByModel] = useState<Record<string, boolean>>({});
+  const message = useMessage();
+  const items = useMemo(() => consolidateProviderModels(provider.models), [provider.models]);
+  const [enabledByKey, setEnabledByKey] = useState<Record<string, boolean>>({});
+  const [effortByKey, setEffortByKey] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
-    setEnabledByModel(Object.fromEntries(provider.models.map((model) => [model.id, model.enabled])));
-  }, [provider.models]);
+    setEnabledByKey(Object.fromEntries(items.map((item) => [item.key, item.enabled])));
+    setEffortByKey(Object.fromEntries(items.map((item) => [item.key, item.defaultEffort])));
+  }, [items]);
 
   const setAll = (enabled: boolean) => {
-    setEnabledByModel(Object.fromEntries(provider.models.map((model) => [model.id, enabled])));
+    setEnabledByKey(Object.fromEntries(items.map((item) => [item.key, enabled])));
   };
 
-  return <Modal
-    fullHeight
-    open
-    title={t("{name} 模型管理", { name: pluginText(provider.displayName, locale) })}
-    busy={busy}
-    onClose={onClose}
-    onSubmit={() => onSubmit(enabledByModel)}
-    submitLabel={t("确定")}
-  >
-    <div className={styles.modelToolbar}>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(true)}>{t("全选")}</Button>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(false)}>{t("全不选")}</Button>
-    </div>
-    <div className={styles.modelTableWrap}>
-      <table className={styles.modelTable}>
-        <thead><tr><th scope="col">{t("模型名称")}</th><th scope="col">{t("启用")}</th></tr></thead>
-        <tbody>
-          {provider.models.map((model) => <tr key={model.id}>
-            <td><div className={styles.modelName}>
-              <strong>{model.displayName}</strong>
-              {model.description && <span>{model.description}</span>}
-            </div></td>
-            <td><Switch
-              checked={enabledByModel[model.id] ?? model.enabled}
-              disabled={busy}
-              label={t("启用 {model}", { model: model.displayName })}
-              onChange={(enabled) => setEnabledByModel((current) => ({ ...current, [model.id]: enabled }))}
-            /></td>
-          </tr>)}
-        </tbody>
-      </table>
-      {provider.models.length === 0 && <span className={styles.empty}>{t("尚未同步模型")}</span>}
-    </div>
-  </Modal>;
+  const copyModelName = async (modelName: string) => {
+    try {
+      await api.copyCursorText(modelName);
+    } catch {
+      await navigator.clipboard?.writeText(modelName).catch(() => undefined);
+    }
+    message(`${t("已复制")}: ${modelName}`);
+  };
+
+  const isDirty = useMemo(() => {
+    return items.some((item) => {
+      const currentEnabled = enabledByKey[item.key] ?? item.enabled;
+      if (currentEnabled !== item.enabled) return true;
+      const currentEffort = effortByKey[item.key] ?? item.defaultEffort;
+      if (currentEffort !== item.defaultEffort) return true;
+      return false;
+    });
+  }, [items, enabledByKey, effortByKey]);
+
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  const handleRequestClose = () => {
+    if (isDirty) {
+      setShowExitConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleSubmit = () => {
+    const enabledByModel: Record<string, boolean> = {};
+    const effortByModel: Record<string, string | null> = {};
+    for (const item of items) {
+      const groupEnabled = enabledByKey[item.key] ?? item.enabled;
+      const selectedEffort = effortByKey[item.key] ?? item.defaultEffort;
+      const variantEntries = Object.entries(item.variantByEffort);
+      if (variantEntries.length > 1) {
+        const chosenVariant = selectedEffort
+          ? (item.variantByEffort[selectedEffort] ?? item.members[0])
+          : item.members[0];
+        for (const member of item.members) {
+          enabledByModel[member.id] = groupEnabled && member.id === chosenVariant?.id;
+          effortByModel[member.id] = selectedEffort;
+        }
+      } else {
+        for (const member of item.members) {
+          enabledByModel[member.id] = groupEnabled && member.modelId === item.baseModelId
+            ? true
+            : groupEnabled && item.members.length === 1;
+          effortByModel[member.id] = selectedEffort;
+        }
+      }
+    }
+    onSubmit(enabledByModel, effortByModel);
+  };
+
+  return <>
+    <Modal
+      square
+      open
+      title={t("{name} 模型管理", { name: pluginText(provider.displayName, locale) })}
+      busy={busy}
+      onClose={handleRequestClose}
+      onSubmit={handleSubmit}
+      submitLabel={t("确定")}
+    >
+      <div className={styles.modelManager}>
+        <div className={styles.modelToolbar}>
+          <Button size="small" disabled={busy || items.length === 0} onClick={() => setAll(true)}>{t("全选")}</Button>
+          <Button size="small" disabled={busy || items.length === 0} onClick={() => setAll(false)}>{t("全不选")}</Button>
+        </div>
+        {items.length > 0
+          ? <div className={styles.modelGrid}>
+            {items.map((item) => {
+              const checked = enabledByKey[item.key] ?? item.enabled;
+              const selectedEffort = effortByKey[item.key] ?? item.defaultEffort;
+              return <Card
+                key={item.key}
+                className={styles.modelCard}
+                data-disabled={busy || undefined}
+                onClick={() => void copyModelName(item.baseModelId)}
+              >
+                <div className={styles.modelCardTop}>
+                  <ModelAvatar modelId={item.baseModelId} displayName={item.displayName} icon={item.icon} />
+                  <div className={styles.modelCardName}>
+                    <span className={styles.modelCardNameText} title={item.displayName}>{item.displayName}</span>
+                    <span className={styles.modelCardModelId} title={item.baseModelId}>{item.baseModelId}</span>
+                    {item.description && <span className={styles.modelCardDescription} title={item.description}>{item.description}</span>}
+                  </div>
+                  <Switch
+                    checked={checked}
+                    disabled={busy}
+                    label={t("启用 {model}", { model: item.displayName })}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(enabled) => setEnabledByKey((current) => ({ ...current, [item.key]: enabled }))}
+                  />
+                </div>
+                {item.efforts.length > 0 && <EffortSlider
+                  efforts={item.efforts}
+                  value={selectedEffort}
+                  disabled={busy}
+                  onChange={(effort) => setEffortByKey((current) => ({ ...current, [item.key]: effort }))}
+                />}
+              </Card>;
+            })}
+          </div>
+          : <span className={styles.empty}>{t("尚未同步模型")}</span>}
+      </div>
+    </Modal>
+    {showExitConfirm && <Modal
+      compact
+      open
+      title={t("未保存的更改")}
+      role="alertdialog"
+      busy={busy}
+      initialFocus="submit"
+      closeLabel={t("放弃更改")}
+      submitLabel={t("保存并关闭")}
+      secondaryAction={<Button size="small" onClick={() => setShowExitConfirm(false)}>{t("继续编辑")}</Button>}
+      onClose={() => {
+        setShowExitConfirm(false);
+        onClose();
+      }}
+      onSubmit={() => {
+        setShowExitConfirm(false);
+        handleSubmit();
+      }}
+    >
+      <p>{t("检测到您对模型配置进行了修改，是否要保存更改并关闭？")}</p>
+    </Modal>}
+  </>;
 }
 
 function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
@@ -387,20 +835,25 @@ function ResourceRow({ item, actions, canRefresh, disabled, onAction, onRefresh,
 }) {
   const { locale } = useI18n();
   return <Card className={styles.resourceRow}>
-    <div>
-      <strong>{item.displayName}</strong>
-      {item.description && <span>{pluginText(item.description, locale)}</span>}
-      {item.metrics.map((metric) => <span key={metric.id}>
-        {metric.unit === "percent"
-          ? t("{label} 剩余 {percent}%", { label: pluginText(metric.label, locale), percent: Math.round(metric.value) })
-          : `${pluginText(metric.label, locale)}: ${metric.value}`}
-      </span>)}
+    <div className={styles.rowMain}>
+      <div className={styles.rowTitleWrap}>
+        <strong className={styles.rowTitle}>{item.displayName}</strong>
+        {item.description && <span className={styles.rowTag}>{pluginText(item.description, locale)}</span>}
+      </div>
+      {item.metrics.length > 0 && <div className={styles.rowMetrics}>
+        {item.metrics.map((metric) => <span key={metric.id} className={styles.metricItem}>
+          <span className={styles.metricDot} />
+          {metric.unit === "percent"
+            ? t("{label} 剩余 {percent}%", { label: pluginText(metric.label, locale), percent: Math.round(metric.value) })
+            : `${pluginText(metric.label, locale)}: ${metric.value}`}
+        </span>)}
+      </div>}
     </div>
     <div className={styles.actions}>
       <StateBadge state={item.state} />
       {actions.map((action) => <Button key={action.id} size="small" disabled={disabled} onClick={() => onAction(action)}>{pluginText(action.displayName, locale)}</Button>)}
       {canRefresh && <Button size="small" disabled={disabled} onClick={onRefresh}>{t("刷新")}</Button>}
-      <Button size="small" disabled={disabled} onClick={onDelete}>{t("删除")}</Button>
+      <Button size="small" className={styles.deleteButton} disabled={disabled} onClick={onDelete}>{t("删除")}</Button>
     </div>
   </Card>;
 }
@@ -482,12 +935,21 @@ function formatActionDate(value: number, locale: string) {
 
 function StateBadge({ state }: { state: PluginResourceView["state"] }) {
   if (state.status === "cooling") {
-    return <span className={styles.cooling} title={state.message ?? undefined}>{t("冷却中")}</span>;
+    return <span className={`${styles.stateBadge} ${styles.stateCooling}`} title={state.message ?? undefined}>
+      <span className={styles.stateDot} />
+      <span>{t("冷却中")}</span>
+    </span>;
   }
   if (state.status === "invalid") {
-    return <span className={styles.invalid} title={state.message ?? undefined}>{t("已失效")}</span>;
+    return <span className={`${styles.stateBadge} ${styles.stateInvalid}`} title={state.message ?? undefined}>
+      <span className={styles.stateDot} />
+      <span>{t("已失效")}</span>
+    </span>;
   }
-  return <span className={styles.ready}>{t("可用")}</span>;
+  return <span className={`${styles.stateBadge} ${styles.stateReady}`}>
+    <span className={styles.stateDot} />
+    <span>{t("可用")}</span>
+  </span>;
 }
 
 function errorText(cause: unknown) {

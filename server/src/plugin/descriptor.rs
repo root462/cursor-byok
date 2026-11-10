@@ -99,6 +99,7 @@ pub struct PluginDescriptor {
     pub id: String,
     pub name: String,
     pub version: String,
+    pub author: Option<String>,
     pub icon: String,
     pub providers: Vec<PluginProviderDescriptor>,
     pub resources: Vec<PluginResourceDescriptor>,
@@ -136,6 +137,8 @@ pub struct PluginModelDescriptor {
     pub max_output_tokens: Option<u64>,
     pub images: bool,
     pub enabled: bool,
+    pub reasoning_efforts: Vec<String>,
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -293,6 +296,8 @@ impl PluginModelDescriptor {
             max_output_tokens: model.max_output_tokens,
             images: model.images,
             enabled: model.enabled,
+            reasoning_efforts: model.reasoning_efforts(),
+            reasoning_effort: model.reasoning_effort.clone(),
         }
     }
 }

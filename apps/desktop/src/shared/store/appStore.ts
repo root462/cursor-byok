@@ -7,6 +7,7 @@ export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = {
   output_per_million: 25.0,
   cache_read_per_million: 0.5,
   cache_write_per_million: 6.25,
+  models: {},
 };
 
 export type AppSnapshot = {
@@ -45,6 +46,12 @@ let snapshot: AppSnapshot = {
       cache_read_tokens: 0,
       cache_write_tokens: 0,
       output_tokens: 0,
+      estimated_cost_usd: 0,
+      estimated_cache_cost_usd: 0,
+      input_cost_usd: 0,
+      output_cost_usd: 0,
+      cache_read_cost_usd: 0,
+      cache_write_cost_usd: 0,
     },
     token_usage_granularity: "day",
     token_usage_series: [],

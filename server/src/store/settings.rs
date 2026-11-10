@@ -31,11 +31,21 @@ pub struct ExternalApiSettings {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ModelPricing {
+    pub input_per_million: f64,
+    pub output_per_million: f64,
+    pub cache_read_per_million: f64,
+    pub cache_write_per_million: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TokenPricingSettings {
     pub input_per_million: f64,
     pub output_per_million: f64,
     pub cache_read_per_million: f64,
     pub cache_write_per_million: f64,
+    #[serde(default)]
+    pub models: std::collections::BTreeMap<String, ModelPricing>,
 }
 
 impl Default for TokenPricingSettings {
@@ -45,7 +55,151 @@ impl Default for TokenPricingSettings {
             output_per_million: 25.0,
             cache_read_per_million: 0.5,
             cache_write_per_million: 6.25,
+            models: std::collections::BTreeMap::new(),
         }
+    }
+}
+
+pub fn default_model_pricing(model_id: &str) -> Option<ModelPricing> {
+    let lower = model_id.to_ascii_lowercase();
+    if lower.contains("claude-3-7-sonnet")
+        || lower.contains("claude-3.7-sonnet")
+        || lower.contains("claude-3-5-sonnet")
+        || lower.contains("claude-3.5-sonnet")
+        || lower.contains("claude-sonnet-4")
+    {
+        return Some(ModelPricing {
+            input_per_million: 3.0,
+            output_per_million: 15.0,
+            cache_read_per_million: 0.3,
+            cache_write_per_million: 3.75,
+        });
+    }
+    if lower.contains("claude-3-5-haiku")
+        || lower.contains("claude-3.5-haiku")
+        || lower.contains("claude-haiku")
+    {
+        return Some(ModelPricing {
+            input_per_million: 0.8,
+            output_per_million: 4.0,
+            cache_read_per_million: 0.08,
+            cache_write_per_million: 1.0,
+        });
+    }
+    if lower.contains("opus") {
+        return Some(ModelPricing {
+            input_per_million: 15.0,
+            output_per_million: 75.0,
+            cache_read_per_million: 1.5,
+            cache_write_per_million: 18.75,
+        });
+    }
+    if lower.contains("gpt-4o-mini") {
+        return Some(ModelPricing {
+            input_per_million: 0.15,
+            output_per_million: 0.60,
+            cache_read_per_million: 0.075,
+            cache_write_per_million: 0.15,
+        });
+    }
+    if lower.contains("gpt-4o") {
+        return Some(ModelPricing {
+            input_per_million: 2.50,
+            output_per_million: 10.0,
+            cache_read_per_million: 1.25,
+            cache_write_per_million: 2.50,
+        });
+    }
+    if lower.contains("o1-mini") || lower.contains("o3-mini") {
+        return Some(ModelPricing {
+            input_per_million: 1.10,
+            output_per_million: 4.40,
+            cache_read_per_million: 0.55,
+            cache_write_per_million: 1.10,
+        });
+    }
+    if lower.contains("o1") {
+        return Some(ModelPricing {
+            input_per_million: 15.0,
+            output_per_million: 60.0,
+            cache_read_per_million: 7.50,
+            cache_write_per_million: 15.0,
+        });
+    }
+    if lower.contains("deepseek-reasoner") || lower.contains("deepseek-r1") || lower.contains("r1") {
+        return Some(ModelPricing {
+            input_per_million: 0.55,
+            output_per_million: 2.19,
+            cache_read_per_million: 0.14,
+            cache_write_per_million: 0.55,
+        });
+    }
+    if lower.contains("deepseek") {
+        return Some(ModelPricing {
+            input_per_million: 0.27,
+            output_per_million: 1.10,
+            cache_read_per_million: 0.07,
+            cache_write_per_million: 0.27,
+        });
+    }
+    if lower.contains("flash-lite") {
+        return Some(ModelPricing {
+            input_per_million: 0.0375,
+            output_per_million: 0.15,
+            cache_read_per_million: 0.01,
+            cache_write_per_million: 0.0375,
+        });
+    }
+    if lower.contains("gemini") && lower.contains("flash") {
+        return Some(ModelPricing {
+            input_per_million: 0.075,
+            output_per_million: 0.30,
+            cache_read_per_million: 0.01875,
+            cache_write_per_million: 0.075,
+        });
+    }
+    if lower.contains("gemini") && lower.contains("pro") {
+        return Some(ModelPricing {
+            input_per_million: 1.25,
+            output_per_million: 5.0,
+            cache_read_per_million: 0.3125,
+            cache_write_per_million: 1.25,
+        });
+    }
+    if lower.contains("gpt-4-turbo") || lower.contains("gpt-4-0125") || lower.contains("gpt-4-1106") {
+        return Some(ModelPricing {
+            input_per_million: 10.0,
+            output_per_million: 30.0,
+            cache_read_per_million: 5.0,
+            cache_write_per_million: 10.0,
+        });
+    }
+    None
+}
+
+impl TokenPricingSettings {
+    pub fn default_pricing(&self) -> ModelPricing {
+        ModelPricing {
+            input_per_million: self.input_per_million,
+            output_per_million: self.output_per_million,
+            cache_read_per_million: self.cache_read_per_million,
+            cache_write_per_million: self.cache_write_per_million,
+        }
+    }
+
+    pub fn effective_pricing(&self, model_hash: Option<&str>, model_id: &str) -> ModelPricing {
+        if let Some(hash) = model_hash {
+            if let Some(pricing) = self.models.get(hash) {
+                return *pricing;
+            }
+        }
+        if let Some(pricing) = self.models.get(model_id) {
+            return *pricing;
+        }
+        if let Some(pricing) = default_model_pricing(model_id) {
+            return pricing;
+        }
+        self.default_pricing()
     }
 }
 
@@ -770,16 +924,43 @@ mod tests {
             TokenPricingSettings::default()
         );
 
+        let mut models = std::collections::BTreeMap::new();
+        models.insert(
+            "custom-hash".into(),
+            super::ModelPricing {
+                input_per_million: 1.0,
+                output_per_million: 2.0,
+                cache_read_per_million: 0.1,
+                cache_write_per_million: 0.5,
+            },
+        );
         let custom = TokenPricingSettings {
             input_per_million: 3.0,
             output_per_million: 15.0,
             cache_read_per_million: 0.3,
             cache_write_per_million: 3.75,
+            models,
         };
-        let saved = store.set_pricing_settings(custom).await.unwrap();
+        let saved = store.set_pricing_settings(custom.clone()).await.unwrap();
         assert_eq!(saved, custom);
 
-        assert_eq!(store.pricing_settings().await.unwrap(), custom);
+        let loaded = store.pricing_settings().await.unwrap();
+        assert_eq!(loaded, custom);
+
+        // Effective pricing tests
+        // 1. By model hash
+        let hash_pricing = loaded.effective_pricing(Some("custom-hash"), "any-model");
+        assert_eq!(hash_pricing.input_per_million, 1.0);
+
+        // 2. By default model id (e.g. claude-3-5-sonnet)
+        let claude_pricing = loaded.effective_pricing(None, "claude-3-5-sonnet-20241022");
+        assert_eq!(claude_pricing.input_per_million, 3.0);
+        assert_eq!(claude_pricing.output_per_million, 15.0);
+
+        // 3. Fallback to global default
+        let unknown_pricing = loaded.effective_pricing(None, "unknown-custom-model");
+        assert_eq!(unknown_pricing.input_per_million, 3.0);
+        assert_eq!(unknown_pricing.output_per_million, 15.0);
     }
 
     #[tokio::test]

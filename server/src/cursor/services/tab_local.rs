@@ -6,6 +6,7 @@
 //! carrying the whole suggestion. Every other TAB RPC keeps going to the
 //! official Cursor endpoint, so cursor prediction and config stay untouched.
 use std::{
+    io::Read,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -14,6 +15,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{header, Request, Response},
 };
+use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -47,30 +49,96 @@ pub async fn stream_cpp(
     request: Request<Body>,
     settings: &TabSettings,
 ) -> Result<Response<Body>> {
-    let budget = request
+    let started = Instant::now();
+    let timeout_header = request
         .headers()
         .get("connect-timeout-ms")
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+    let budget = timeout_header
         .map(Duration::from_millis)
-        .map(|timeout| timeout.saturating_sub(Duration::from_millis(500)))
-        .filter(|timeout| !timeout.is_zero())
-        .map_or(GENERATION_TIMEOUT, |timeout| {
-            timeout.min(GENERATION_TIMEOUT)
-        });
+        .map(|timeout| timeout.max(Duration::from_secs(8)))
+        .unwrap_or(GENERATION_TIMEOUT);
+
+    tracing::info!(
+        model = %settings.model,
+        ?timeout_header,
+        budget_ms = budget.as_millis(),
+        "received StreamCpp request from Cursor"
+    );
+
     let body = to_bytes(request.into_body(), usize::MAX)
         .await
         .map_err(|error| Error::Protocol(format!("cannot read StreamCpp body: {error}")))?;
-    let parsed = parse_stream_cpp(first_payload(&body))?;
-    let completion = match complete(registry, settings, &parsed, budget).await {
-        Ok(text) => text,
+    let parsed = match extract_payload(&body).and_then(|payload| parse_stream_cpp(&payload)) {
+        Ok(mut parsed) => {
+            if parsed.contents.is_empty() && !parsed.path.is_empty() {
+                if let Some(disk_content) =
+                    try_read_file_from_disk(&parsed.workspace_root, &parsed.path)
+                {
+                    parsed.contents = disk_content;
+                }
+            }
+            tracing::info!(
+                path = %parsed.path,
+                lang = %parsed.language,
+                line = parsed.line,
+                col = parsed.column,
+                contents_len = parsed.contents.len(),
+                "parsed StreamCpp request"
+            );
+            Some(parsed)
+        }
         Err(error) => {
-            // 补全失败不该让 Cursor 弹错，退化成空建议即可。
-            tracing::warn!(%error, "local TAB completion failed");
-            String::new()
+            tracing::warn!(%error, "local TAB request parsing failed");
+            None
         }
     };
-    let mut frames = frame(&encode_stream_cpp_response(&completion, true));
+    let (completion, line_1_indexed) = match parsed {
+        Some(ref request) => {
+            let line_1_indexed = (request.line + 1) as i32;
+            let (prefix, _) = split_at_cursor(request);
+            let current_line_prefix =
+                prefix.rsplit_once('\n').map_or(prefix.as_str(), |(_, line)| line);
+            let current_line_prefix = current_line_prefix.trim_end_matches('\r');
+            match complete(registry, settings, request, budget).await {
+                Ok(text) => {
+                    let full_suggestion = if text.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{current_line_prefix}{text}")
+                    };
+                    tracing::info!(
+                        elapsed_ms = started.elapsed().as_millis(),
+                        output_len = text.len(),
+                        output = %text,
+                        full_suggestion = %full_suggestion,
+                        "local TAB completion succeeded"
+                    );
+                    (full_suggestion, line_1_indexed)
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "local TAB completion failed"
+                    );
+                    (String::new(), line_1_indexed)
+                }
+            }
+        }
+        None => (String::new(), 1),
+    };
+
+    // Cursor client requires streaming Connect-RPC frames in strict sequence:
+    // 1. Frame carrying model_info (Field 14) so extractModelInfoFromStream succeeds
+    // 2. Frame carrying range_to_replace (Field 11, 1-indexed LineRange) for the rewrite range
+    // 3. Frame carrying text (Field 1) and done_stream = true (Field 4)
+    // 4. EndStream frame
+    let mut frames = Vec::new();
+    frames.extend_from_slice(&frame(&encode_model_info()));
+    frames.extend_from_slice(&frame(&encode_range_to_replace(line_1_indexed, line_1_indexed)));
+    frames.extend_from_slice(&frame(&encode_text_and_done(&completion, true)));
     frames.extend_from_slice(&connect::encode_end_stream());
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/connect+proto")
@@ -121,16 +189,10 @@ async fn resolve_model(registry: &TransportRegistry, wanted: &str) -> Result<Str
 async fn resolve_plugin_model(registry: &TransportRegistry, wanted: &str) -> Result<String> {
     let plugins = registry
         .plugins()
-        .ok_or_else(|| Error::Provider("plugin models are unavailable on this build".into()))?;
-    let configured = plugins.configured_models().await;
-    if configured.iter().any(|model| model.id == wanted) {
+        .ok_or_else(|| Error::Provider("plugin system is not initialized".into()))?;
+    let models = plugins.configured_models().await;
+    if models.iter().any(|m| m.id == wanted) {
         return Ok(wanted.to_owned());
-    }
-    // 已安装但未启用的模型也会报同一句，避免只给「未配置」的模糊提示。
-    if plugins.model_descriptor(wanted).await.is_ok() {
-        return Err(Error::Provider(format!(
-            "plugin model {wanted} is installed but not enabled; enable it in the plugin page"
-        )));
     }
     Err(Error::Provider(format!(
         "TAB model {wanted} is not an enabled plugin model; pick one in the TAB settings"
@@ -172,6 +234,7 @@ struct TabRequest {
     contents: String,
     line: u32,
     column: u32,
+    workspace_root: String,
 }
 
 async fn generate(
@@ -209,21 +272,45 @@ async fn generate(
         }
         Err(_) => {
             cancellation.cancel();
-            Err(Error::Provider("local TAB completion timed out".into()))
+            Err(Error::Provider(format!(
+                "local TAB generation timed out after {}ms",
+                budget.as_millis()
+            )))
         }
     }
 }
 
-/// Connect clients may wrap the message in a length-prefixed envelope; raw
-/// protobuf bodies are accepted as-is.
-fn first_payload(body: &[u8]) -> &[u8] {
+/// Extracts and decompresses the first protobuf message from a Connect request body.
+fn extract_payload(body: &[u8]) -> Result<Vec<u8>> {
+    if body.is_empty() {
+        return Err(Error::Protocol("empty StreamCpp request".into()));
+    }
     if body.len() >= 5 {
-        let length = u32::from_be_bytes([body[1], body[2], body[3], body[4]]) as usize;
-        if body[0] & connect::END_STREAM_FLAG == 0 && length == body.len() - 5 {
-            return &body[5..];
+        if let Ok(frames) = connect::decode_frames(body) {
+            for (flags, payload) in frames {
+                if flags & connect::END_STREAM_FLAG != 0 {
+                    continue;
+                }
+                if flags & 0x01 != 0 || (payload.len() >= 2 && payload[0] == 0x1f && payload[1] == 0x8b) {
+                    return decompress_gzip(&payload);
+                }
+                return Ok(payload.to_vec());
+            }
         }
     }
-    body
+    if body.len() >= 2 && body[0] == 0x1f && body[1] == 0x8b {
+        return decompress_gzip(body);
+    }
+    Ok(body.to_vec())
+}
+
+fn decompress_gzip(data: &[u8]) -> Result<Vec<u8>> {
+    let mut decoder = GzDecoder::new(data);
+    let mut decompressed = Vec::new();
+    decoder
+        .read_to_end(&mut decompressed)
+        .map_err(|error| Error::Protocol(format!("cannot decompress StreamCpp payload: {error}")))?;
+    Ok(decompressed)
 }
 
 fn parse_stream_cpp(bytes: &[u8]) -> Result<TabRequest> {
@@ -232,6 +319,9 @@ fn parse_stream_cpp(bytes: &[u8]) -> Result<TabRequest> {
     while index < bytes.len() {
         let tag = read_varint(bytes, &mut index)
             .ok_or_else(|| Error::Protocol("truncated StreamCppRequest".into()))?;
+        if tag == 0 {
+            break;
+        }
         let field = tag >> 3;
         let wire = (tag & 7) as u8;
         if field == 1 && wire == 2 {
@@ -250,6 +340,9 @@ fn parse_current_file(bytes: &[u8], request: &mut TabRequest) -> Result<()> {
     while index < bytes.len() {
         let tag = read_varint(bytes, &mut index)
             .ok_or_else(|| Error::Protocol("truncated CurrentFileInfo".into()))?;
+        if tag == 0 {
+            break;
+        }
         let field = tag >> 3;
         let wire = (tag & 7) as u8;
         match (field, wire) {
@@ -261,6 +354,7 @@ fn parse_current_file(bytes: &[u8], request: &mut TabRequest) -> Result<()> {
                 parse_cursor_position(position, request)?;
             }
             (5, 2) => request.language = read_string(bytes, &mut index)?,
+            (19, 2) => request.workspace_root = read_string(bytes, &mut index)?,
             _ => {
                 if skip_field(bytes, &mut index, wire).is_none() {
                     return Err(Error::Protocol("truncated CurrentFileInfo field".into()));
@@ -276,6 +370,9 @@ fn parse_cursor_position(bytes: &[u8], request: &mut TabRequest) -> Result<()> {
     while index < bytes.len() {
         let tag = read_varint(bytes, &mut index)
             .ok_or_else(|| Error::Protocol("truncated CursorPosition".into()))?;
+        if tag == 0 {
+            break;
+        }
         let field = tag >> 3;
         let wire = (tag & 7) as u8;
         match (field, wire) {
@@ -297,6 +394,70 @@ fn parse_cursor_position(bytes: &[u8], request: &mut TabRequest) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn try_read_file_from_disk(workspace_root: &str, file_path: &str) -> Option<String> {
+    let clean_path = normalize_path_str(file_path);
+    let path = std::path::Path::new(&clean_path);
+    if path.is_absolute() && path.exists() {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            tracing::info!(
+                path = %path.display(),
+                len = content.len(),
+                "hydrated empty StreamCpp contents from absolute path"
+            );
+            return Some(content);
+        }
+    }
+
+    if !workspace_root.is_empty() {
+        let clean_root = normalize_path_str(workspace_root);
+        let joined = std::path::Path::new(&clean_root).join(&clean_path);
+        if joined.exists() {
+            if let Ok(content) = std::fs::read_to_string(&joined) {
+                tracing::info!(
+                    path = %joined.display(),
+                    len = content.len(),
+                    "hydrated empty StreamCpp contents from workspace root"
+                );
+                return Some(content);
+            }
+        }
+    }
+
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            tracing::info!(
+                path = %path.display(),
+                len = content.len(),
+                "hydrated empty StreamCpp contents from relative path"
+            );
+            return Some(content);
+        }
+    }
+
+    tracing::warn!(
+        workspace_root,
+        file_path,
+        "failed to hydrate empty StreamCpp contents from disk: file not found"
+    );
+    None
+}
+
+fn normalize_path_str(raw: &str) -> String {
+    let mut s = raw.trim();
+    if let Some(stripped) = s.strip_prefix("file:///") {
+        s = stripped;
+    } else if let Some(stripped) = s.strip_prefix("file://") {
+        s = stripped;
+    }
+    #[cfg(windows)]
+    {
+        if s.starts_with('/') && s.len() > 2 && s.as_bytes()[2] == b':' {
+            s = &s[1..];
+        }
+    }
+    s.to_owned()
 }
 
 fn read_varint(input: &[u8], index: &mut usize) -> Option<u64> {
@@ -325,45 +486,52 @@ fn read_bytes<'a>(input: &'a [u8], index: &mut usize) -> Option<&'a [u8]> {
 }
 
 fn read_string(input: &[u8], index: &mut usize) -> Result<String> {
-    let bytes =
-        read_bytes(input, index).ok_or_else(|| Error::Protocol("truncated string field".into()))?;
-    Ok(String::from_utf8_lossy(bytes).into_owned())
+    let bytes = read_bytes(input, index)
+        .ok_or_else(|| Error::Protocol("truncated protobuf string".into()))?;
+    String::from_utf8(bytes.to_vec())
+        .map_err(|error| Error::Protocol(format!("invalid UTF-8 in StreamCppRequest: {error}")))
 }
 
 fn skip_field(input: &[u8], index: &mut usize, wire: u8) -> Option<()> {
     match wire {
-        0 => read_varint(input, index).map(|_| ()),
+        0 => {
+            read_varint(input, index)?;
+            Some(())
+        }
         1 => {
-            *index += 8;
+            *index = index.checked_add(8)?;
             (*index <= input.len()).then_some(())
         }
-        2 => read_bytes(input, index).map(|_| ()),
+        2 => {
+            let length = read_varint(input, index)? as usize;
+            *index = index.checked_add(length)?;
+            (*index <= input.len()).then_some(())
+        }
         5 => {
-            *index += 4;
+            *index = index.checked_add(4)?;
             (*index <= input.len()).then_some(())
         }
         _ => None,
     }
 }
 
-/// Splits the file at the cursor: line is 1-based, column counts characters.
+/// Splits the file at the cursor: line and column are 0-based.
 fn split_at_cursor(request: &TabRequest) -> (String, String) {
-    let target_line = request.line.max(1);
+    let mut current_line = 0u32;
     let mut offset = 0usize;
-    let mut line = 1u32;
     for character in request.contents.chars() {
-        if line >= target_line {
+        if current_line >= request.line {
             break;
         }
         offset += character.len_utf8();
         if character == '\n' {
-            line += 1;
+            current_line += 1;
         }
     }
     let rest = &request.contents[offset..];
     let mut cursor = offset;
     for (taken, character) in rest.chars().enumerate() {
-        if taken >= request.column as usize || character == '\n' {
+        if taken >= request.column as usize || character == '\n' || character == '\r' {
             break;
         }
         cursor += character.len_utf8();
@@ -416,7 +584,9 @@ fn head(value: &str, limit: usize) -> &str {
 /// sits at the start of a line, and anything beyond the size a TAB suggestion
 /// can usefully be. Indentation of the first line is preserved.
 fn clean_suggestion(raw: &str, prefix: &str) -> String {
-    let text = strip_fences(raw);
+    let text = strip_thinking(raw);
+    let text = strip_fences(text);
+    let text = strip_current_line_prefix(text, prefix);
     // 光标已在行首时，模型多给的换行只会制造空行；行中则保留，用来另起一行。
     let text = if prefix.is_empty() || prefix.ends_with('\n') {
         text.trim_start_matches(['\n', '\r'])
@@ -441,24 +611,72 @@ fn clean_suggestion(raw: &str, prefix: &str) -> String {
     }
 }
 
+fn strip_thinking(value: &str) -> &str {
+    let trimmed = value.trim_start();
+    if let Some(pos) = trimmed.find("</think>") {
+        trimmed[pos + "</think>".len()..].trim_start()
+    } else if trimmed.starts_with("<think>") {
+        ""
+    } else {
+        value
+    }
+}
+
+fn strip_current_line_prefix<'a>(text: &'a str, prefix: &str) -> &'a str {
+    let current_line = prefix.rsplit_once('\n').map_or(prefix, |(_, line)| line);
+    let current_line = current_line.trim_end_matches('\r');
+    let trimmed_line = current_line.trim_start();
+    if !current_line.is_empty() && text.starts_with(current_line) {
+        &text[current_line.len()..]
+    } else if !trimmed_line.is_empty() && text.starts_with(trimmed_line) {
+        &text[trimmed_line.len()..]
+    } else {
+        text
+    }
+}
+
 fn strip_fences(value: &str) -> &str {
-    let trimmed = value.trim_end();
+    let trimmed = value.trim();
     if !trimmed.starts_with("```") {
-        return trimmed;
+        return value;
     }
     let body = trimmed.trim_start_matches("```");
     let body = body.split_once('\n').map_or(body, |(_, rest)| rest);
     body.rsplit_once("```").map_or(body, |(body, _)| body)
 }
 
-fn encode_stream_cpp_response(text: &str, done: bool) -> Vec<u8> {
+fn encode_model_info() -> Vec<u8> {
+    // StreamCppResponse.model_info (Field 14, wire 2, length 0)
+    vec![0x72, 0x00]
+}
+
+fn encode_range_to_replace(start_line: i32, end_line: i32) -> Vec<u8> {
+    let mut range_payload = Vec::new();
+    // LineRange.start_line_number (Field 1, wire 0)
+    range_payload.push(0x08);
+    put_varint(&mut range_payload, start_line as u64);
+    // LineRange.end_line_number_inclusive (Field 2, wire 0)
+    range_payload.push(0x10);
+    put_varint(&mut range_payload, end_line as u64);
+
+    let mut output = Vec::new();
+    // StreamCppResponse.range_to_replace (Field 11, wire 2)
+    output.push(0x5a);
+    put_varint(&mut output, range_payload.len() as u64);
+    output.extend_from_slice(&range_payload);
+    output
+}
+
+fn encode_text_and_done(text: &str, done: bool) -> Vec<u8> {
     let mut output = Vec::new();
     if !text.is_empty() {
+        // StreamCppResponse.text (Field 1, wire 2)
         output.push(0x0a);
         put_varint(&mut output, text.len() as u64);
         output.extend_from_slice(text.as_bytes());
     }
     if done {
+        // StreamCppResponse.done_stream (Field 4, wire 0)
         output.push(0x20);
         output.push(1);
     }
@@ -484,6 +702,8 @@ fn put_varint(output: &mut Vec<u8>, mut value: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::{write::GzEncoder, Compression};
+    use std::io::Write;
 
     fn encode_request(contents: &str, line: u32, column: u32) -> Vec<u8> {
         let mut cursor = vec![0x08];
@@ -502,6 +722,9 @@ mod tests {
         file.extend_from_slice(&cursor);
         file.extend_from_slice(&[0x2a, 4]);
         file.extend_from_slice(b"rust");
+        // workspace_root tag 19 (19 << 3 | 2 = 154 = [0x9a, 0x01])
+        file.extend_from_slice(&[0x9a, 0x01, 8]);
+        file.extend_from_slice(b"/project");
 
         let mut request = vec![0x0a];
         put_varint(&mut request, file.len() as u64);
@@ -516,14 +739,45 @@ mod tests {
         assert_eq!(request.path, "src/main.rs");
         assert_eq!(request.contents, "fn main() {}\n");
         assert_eq!(request.language, "rust");
+        assert_eq!(request.workspace_root, "/project");
         assert_eq!((request.line, request.column), (1, 3));
+    }
+
+    #[test]
+    fn parses_connect_stream_with_trailing_end_stream() {
+        let raw = encode_request("fn add(a: i32, b: i32) -> i32 {\n", 1, 31);
+        let mut body = frame(&raw);
+        body.extend_from_slice(&connect::encode_end_stream());
+        let payload = extract_payload(&body).unwrap();
+        let request = parse_stream_cpp(&payload).unwrap();
+        assert_eq!(request.contents, "fn add(a: i32, b: i32) -> i32 {\n");
+        assert_eq!((request.line, request.column), (1, 31));
+    }
+
+    #[test]
+    fn parses_gzip_compressed_connect_stream() {
+        let raw = encode_request("println!(\"hello\");\n", 1, 10);
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&raw).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        let mut body = Vec::new();
+        body.push(0x01); // compressed flag
+        body.extend_from_slice(&(compressed.len() as u32).to_be_bytes());
+        body.extend_from_slice(&compressed);
+        body.extend_from_slice(&connect::encode_end_stream());
+
+        let payload = extract_payload(&body).unwrap();
+        let request = parse_stream_cpp(&payload).unwrap();
+        assert_eq!(request.contents, "println!(\"hello\");\n");
+        assert_eq!((request.line, request.column), (1, 10));
     }
 
     #[test]
     fn splits_at_the_cursor_counting_characters() {
         let request = TabRequest {
             contents: "let s = \"你好\";\n".into(),
-            line: 1,
+            line: 0,
             column: 9,
             ..TabRequest::default()
         };
@@ -536,7 +790,7 @@ mod tests {
     fn splits_on_a_later_line() {
         let request = TabRequest {
             contents: "fn main() {\n    let x = 1;\n}\n".into(),
-            line: 2,
+            line: 1,
             column: 4,
             ..TabRequest::default()
         };
@@ -547,10 +801,16 @@ mod tests {
 
     #[test]
     fn response_carries_text_then_done_stream() {
-        let payload = encode_stream_cpp_response("abc", true);
+        let payload = encode_text_and_done("abc", true);
         assert_eq!(payload, b"\x0a\x03abc\x20\x01");
         let framed = frame(&payload);
         assert_eq!(&framed[..5], &[0, 0, 0, 0, payload.len() as u8]);
+
+        let model_info = encode_model_info();
+        assert_eq!(model_info, &[0x72, 0x00]);
+
+        let range = encode_range_to_replace(40, 40);
+        assert_eq!(range, &[0x5a, 0x04, 0x08, 40, 0x10, 40]);
     }
 
     #[test]
@@ -558,6 +818,22 @@ mod tests {
         let raw = "```rust\n\n    foo();\n```";
         assert_eq!(clean_suggestion(raw, "fn a() {\n"), "    foo();");
         assert_eq!(clean_suggestion("\n    foo();", "fn a() {"), "\n    foo();");
+    }
+
+    #[test]
+    fn cleaning_strips_current_line_prefix_repetition() {
+        let prefix = "    public ResponseEntity<";
+        let raw = "    public ResponseEntity<SalesOrder> getOrder() {\n    }";
+        assert_eq!(
+            clean_suggestion(raw, prefix),
+            "SalesOrder> getOrder() {\n    }"
+        );
+    }
+
+    #[test]
+    fn cleaning_strips_thinking_tags() {
+        let raw = "  <think>\nI will complete the method.\n</think>\npublic void test() {}";
+        assert_eq!(clean_suggestion(raw, ""), "public void test() {}");
     }
 
     #[test]

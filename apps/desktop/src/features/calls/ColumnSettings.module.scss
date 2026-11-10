@@ -1,5 +1,19 @@
 @use "../../styles/typography" as type;
 
+.trigger {
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: type.$font-size-xs;
+  font-weight: normal;
+  color: var(--vscode-descriptionForeground);
+  gap: 4px;
+
+  &:hover:not(:disabled) {
+    color: var(--vscode-foreground);
+  }
+}
+
 .menu {
   composes: liquid from global;
   --liquid-radius: 8px;
@@ -87,4 +101,5 @@
 
 .openIcon {
   transform: rotate(180deg);
+  transition: transform 120ms ease;
 }

@@ -18,6 +18,7 @@ use tauri::{
     WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(dev)]
@@ -107,11 +108,84 @@ async fn open_external_url_handler(
         .map_err(|error| (StatusCode::BAD_REQUEST, error))
 }
 
+#[derive(serde::Deserialize)]
+struct SwitchVersionRequest {
+    version: String,
+}
+
+async fn switch_version_handler(
+    Extension(app): Extension<AppHandle>,
+    Json(request): Json<SwitchVersionRequest>,
+) -> std::result::Result<StatusCode, (StatusCode, String)> {
+    let clean_version = request.version.trim().trim_start_matches('v');
+    if clean_version.is_empty()
+        || !clean_version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid version format".into()));
+    }
+
+    let endpoint_str = format!(
+        "https://github.com/root462/cursor-byok/releases/download/v{clean_version}/latest.json"
+    );
+    let target_url = url::Url::parse(&endpoint_str)
+        .map_err(|error| (StatusCode::BAD_REQUEST, format!("invalid endpoint URL: {error}")))?;
+
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![target_url])
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to configure updater endpoint: {error}"),
+            )
+        })?
+        .version_comparator(|_, _| true)
+        .build()
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to initialize updater: {error}"),
+            )
+        })?;
+
+    let update = updater.check().await.map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to check target release manifest: {error}"),
+        )
+    })?;
+
+    let Some(update) = update else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("version v{clean_version} release manifest not found or incompatible"),
+        ));
+    };
+
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to download and install version v{clean_version}: {error}"),
+            )
+        })?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn desktop_api_router(app: AppHandle) -> Router {
     Router::new()
         .route(
             "/__byok-api__/api/desktop/open-external-url",
             post(open_external_url_handler),
+        )
+        .route(
+            "/__byok-api__/api/desktop/switch-version",
+            post(switch_version_handler),
         )
         .layer(Extension(app))
 }

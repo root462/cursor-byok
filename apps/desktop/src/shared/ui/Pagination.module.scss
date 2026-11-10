@@ -5,12 +5,25 @@
   min-height: 34px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
   padding: 0px 0 6px 0;
   color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-xs;
   background: transparent;
+}
+
+.extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paginationControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 
 .controls {

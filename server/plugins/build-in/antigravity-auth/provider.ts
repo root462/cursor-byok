@@ -14,6 +14,7 @@ import {
   ANTIGRAVITY_ENDPOINTS,
   ANTIGRAVITY_USER_AGENT,
   antigravityModels,
+  resolveModelVariantId,
 } from "./models.ts";
 import {
   type AccountData,
@@ -63,9 +64,29 @@ async function readBody(lines: AsyncIterable<string>): Promise<string> {
   return collected.join("\n");
 }
 
-function resolveAntigravityModel(modelId: string): string {
+function resolveAntigravityModel(modelId: string, requestedEffort?: string | null): string {
   const raw = modelId.trim();
   const lower = raw.toLowerCase();
+  const rawEffort = requestedEffort?.trim().toLowerCase() ?? null;
+  const tier = rawEffort === "low" || rawEffort === "minimal"
+    ? "low"
+    : rawEffort === "medium"
+    ? "medium"
+    : rawEffort === "tiered"
+    ? "tiered"
+    : "high";
+
+  if (
+    lower === "gemini-3.8-flash" ||
+    lower === "claude-opus-5-5" ||
+    lower === "claude-sonnet-5-5"
+  ) {
+    const effectiveTier = tier === "tiered" && !lower.startsWith("gemini-3.8-flash") ? "high" : tier;
+    return `${lower}-${effectiveTier}`;
+  }
+  if (lower === "gpt-oss-120b") {
+    return "gpt-oss-120b-medium";
+  }
 
   // 1. If explicit tier is already specified in the model ID, pass it directly!
   if (
@@ -73,9 +94,13 @@ function resolveAntigravityModel(modelId: string): string {
     lower.startsWith("gemini-3.7-flash-") ||
     lower.startsWith("gemini-3.6-flash-") ||
     lower.startsWith("gemini-3.1-pro-") ||
-    lower === "gemini-3.8-flash" ||
+    lower.startsWith("claude-opus-5-5-") ||
+    lower.startsWith("claude-sonnet-5-5-") ||
     lower === "gemini-3.7-flash" ||
     lower === "gemini-3.6-flash" ||
+    lower === "gemini-3.5-flash-lite" ||
+    lower === "gemini-3.1-flash-lite" ||
+    lower === "gemini-3-flash" ||
     lower === "gemini-2.5-flash" ||
     lower === "gemini-2.5-pro" ||
     lower === "gemini-2.0-flash" ||
@@ -112,7 +137,7 @@ function resolveAntigravityModel(modelId: string): string {
   if (lower === "gemini-2.5-flash-lite") {
     return "gemini-2.5-flash";
   }
-  if (lower === "gemini-3-flash" || lower === "gemini-3.5-flash") {
+  if (lower === "gemini-3.5-flash") {
     return "gemini-3.7-flash";
   }
   if (lower === "gemini-3-pro" || lower === "gemini-3.1-pro") {
@@ -314,7 +339,11 @@ async function streamCloudCode(
   output: ProviderOutput,
   context: PluginContext,
 ): Promise<void> {
-  const actualModel = resolveAntigravityModel(modelId);
+  const variantModelId = resolveModelVariantId(input.model, input.request.reasoning?.effort);
+  const actualModel = resolveAntigravityModel(
+    variantModelId === input.model.id ? modelId : variantModelId,
+    input.request.reasoning?.effort,
+  );
   const { contents, systemInstruction } = convertToCloudCodeContents(
     input.request.instructions,
     input.request.messages,

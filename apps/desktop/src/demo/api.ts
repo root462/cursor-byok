@@ -183,6 +183,9 @@ export function installDemoApi() {
       }
       return empty();
     }
+    if (path === "/desktop/switch-version") {
+      return empty();
+    }
 
     return json({ message: `Unhandled demo endpoint: ${method} ${path}` }, 404);
   };
@@ -253,6 +256,12 @@ function createOverview(params: URLSearchParams): Overview {
       cache_read_tokens: totals.cacheRead,
       cache_write_tokens: totals.cacheWrite,
       output_tokens: totals.output,
+      estimated_cost_usd: (totals.input * 3 + totals.output * 15 + totals.cacheRead * 0.3 + totals.cacheWrite * 3.75) / 1_000_000,
+      estimated_cache_cost_usd: (totals.cacheRead * 0.3 + totals.cacheWrite * 3.75) / 1_000_000,
+      input_cost_usd: (totals.input * 3) / 1_000_000,
+      output_cost_usd: (totals.output * 15) / 1_000_000,
+      cache_read_cost_usd: (totals.cacheRead * 0.3) / 1_000_000,
+      cache_write_cost_usd: (totals.cacheWrite * 3.75) / 1_000_000,
     },
     token_usage_granularity: granularity,
     token_usage_series: series,

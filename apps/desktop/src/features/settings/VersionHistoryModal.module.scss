@@ -1,0 +1,127 @@
+@use "../../styles/typography" as type;
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgb(255 255 255 / 10%));
+}
+
+.currentVersion {
+  font-size: type.$font-size-xs;
+  color: var(--vscode-foreground);
+
+  strong {
+    font-weight: 600;
+    margin-left: 4px;
+    color: var(--vscode-textLink-foreground, #388bfd);
+  }
+}
+
+.stateBox {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.errorText {
+  color: var(--vscode-errorForeground, #f85149);
+}
+
+.releaseList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.releaseCard {
+  border: 1px solid var(--vscode-widget-border, rgb(255 255 255 / 10%));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 60%, transparent);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 140ms ease, background-color 140ms ease;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--vscode-focusBorder) 50%, transparent);
+    background: color-mix(in srgb, var(--vscode-editor-background) 80%, transparent);
+  }
+}
+
+.releaseCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.releaseTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tagName {
+  font-size: type.$font-size-base;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.releaseDate {
+  font-size: type.$font-size-xs;
+  color: var(--vscode-descriptionForeground);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: type.$font-size-xs;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.currentBadge {
+  background: rgb(35 134 54 / 20%);
+  color: #3fb950;
+  border: 1px solid rgb(63 185 80 / 35%);
+}
+
+.newerBadge {
+  background: rgb(56 139 253 / 18%);
+  color: #58a6ff;
+  border: 1px solid rgb(88 166 255 / 35%);
+}
+
+.olderBadge {
+  background: rgb(110 118 129 / 18%);
+  color: #8b949e;
+  border: 1px solid rgb(110 118 129 / 35%);
+}
+
+.releaseBody {
+  font-size: type.$font-size-xs;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 80px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: rgb(0 0 0 / 15%);
+  border-radius: 6px;
+}

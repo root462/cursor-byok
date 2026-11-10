@@ -1,40 +1,81 @@
+.primary,
+.secondary {
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
+
+  &:hover,
+  &:active,
+  &:focus {
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+    filter: none !important;
+  }
+}
+
 .primary {
-  min-height: 30px;
+  min-height: 28px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 0 11px;
+  padding: 0 13px;
   color: var(--vscode-button-foreground);
   background: var(--vscode-button-background);
   border: 0;
-  border-radius: 5px;
+  border-radius: 9999px;
+  font-weight: 500;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 26%),
+    inset 0 0 0 1px rgb(255 255 255 / 12%),
+    0 4px 10px -5px color-mix(in srgb, var(--vscode-button-background) 60%, transparent);
+  transition: none !important;
+  &:hover:not(:disabled) {
+    filter: none !important;
+  }
   &:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 .secondary {
   composes: liquid from global;
-  --liquid-radius: 6px;
-  --liquid-padding: 0 9px;
+  --liquid-radius: 9999px;
+  --liquid-padding: 0 13px;
   --liquid-min-width: 0;
-  --liquid-min-height: 30px;
-  --liquid-bg: color-mix(in srgb, var(--vscode-input-background) 55%, transparent);
-  min-height: 30px;
-  height: 30px;
+  --liquid-min-height: 28px;
+  --liquid-bg: rgba(255, 255, 255, 0.40);
+  --liquid-border: rgba(255, 255, 255, 0.60);
+  --liquid-blur: 8px;
+  min-height: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 0 9px;
-  color: var(--vscode-input-foreground);
+  padding: 0 13px;
+  color: rgba(17, 24, 39, 0.92);
+  font-weight: 500;
   white-space: nowrap;
-  &:hover { --liquid-bg: color-mix(in srgb, var(--vscode-list-hoverBackground) 70%, transparent); }
+  transition: none !important;
+
+  // .liquid::before 在小尺寸按钮上会产生内缩深色斑块，直接关闭保留玻璃质感与边缘光
+  &::before {
+    display: none;
+  }
+
+  // 完全禁用 hover 效果，保持纯粹静止的液态玻璃外观
+  &:hover:not(:disabled) {
+    filter: none !important;
+  }
   &:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 .small {
-  min-height: 24px;
-  height: 24px;
-  padding-inline: 7px;
-  border-radius: 4px;
+  --liquid-radius: 9999px;
+  --liquid-min-height: 26px;
+  min-height: 26px;
+  height: 26px;
+  padding-inline: 10px;
 }
 
 .iconButton {

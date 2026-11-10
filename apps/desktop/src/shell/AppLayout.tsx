@@ -5,37 +5,43 @@ import { NavLink, useLocation } from "react-router-dom";
 import cursorIconUrl from "../shared/assets/icons/cursor.svg";
 import { PageLayout } from "./layout/PageLayout";
 import { Card } from "../shared/ui/Card";
-import controls from "../shared/ui/Controls.module.scss";
 import { Icon } from "../shared/ui/Icon";
-import { TooltipTrigger } from "../shared/ui/TooltipTrigger";
-import { flatColorAreaChartIcon, flatColorCrystalOscillatorIcon, flatColorDataConfigurationIcon, flatColorSalesPerformanceIcon, flatColorSettingsIcon, refreshIcon } from "../shared/ui/icons";
+import {
+  menuCallsActiveIcon,
+  menuCallsIcon,
+  menuOverviewActiveIcon,
+  menuOverviewIcon,
+  menuPluginsActiveIcon,
+  menuPluginsIcon,
+  menuSettingsActiveIcon,
+  menuSettingsIcon,
+} from "../shared/ui/icons";
 import { VirtualList } from "../shared/virtual/VirtualList";
-import { appStore, useAppStore } from "../shared/store/appStore";
-import { useUpdateStore } from "../shared/store/updateStore";
+import { useAppStore } from "../shared/store/appStore";
+import { updateStore, useUpdateStore } from "../shared/store/updateStore";
 import styles from "./AppLayout.module.scss";
 import { PageActionsTarget } from "./PageActions";
 
 type MenuItem =
-  | { kind: "page"; path: string; label: string; icon: IconifyIcon | string }
+  | { kind: "page"; path: string; label: string; icon: IconifyIcon | string; activeIcon?: IconifyIcon }
   | { kind: "group"; label: string };
 
-const keptAlivePages = ["/", "/calls", "/settings", "/harness/cursor", "/plugins", "/tab"];
+const keptAlivePages = ["/", "/calls", "/settings", "/harness/cursor", "/plugins"];
 
 export function AppLayout() {
-  const { busy, cursorHarness } = useAppStore();
-  const { availableVersion } = useUpdateStore();
+  const { cursorHarness } = useAppStore();
+  const { availableVersion, installing } = useUpdateStore();
   const location = useLocation();
   const [leftActionTarget, setLeftActionTarget] = useState<HTMLDivElement | null>(null);
   const [rightActionTarget, setRightActionTarget] = useState<HTMLDivElement | null>(null);
   const menuItems: MenuItem[] = [
-    { kind: "page", path: "/", label: t("数据概览"), icon: flatColorAreaChartIcon },
-    { kind: "page", path: "/calls", label: t("调用详细"), icon: flatColorSalesPerformanceIcon },
+    { kind: "page", path: "/", label: t("驾驶舱"), icon: menuOverviewIcon, activeIcon: menuOverviewActiveIcon },
+    { kind: "page", path: "/calls", label: t("调用详细"), icon: menuCallsIcon, activeIcon: menuCallsActiveIcon },
     { kind: "group", label: t("模型配置") },
     { kind: "page", path: "/harness/cursor", label: "Cursor", icon: cursorIconUrl },
     { kind: "group", label: t("设置") },
-    { kind: "page", path: "/plugins", label: t("插件配置"), icon: flatColorCrystalOscillatorIcon },
-    { kind: "page", path: "/tab", label: t("TAB 配置"), icon: flatColorDataConfigurationIcon },
-    { kind: "page", path: "/settings", label: t("系统设置"), icon: flatColorSettingsIcon },
+    { kind: "page", path: "/plugins", label: t("插件配置"), icon: menuPluginsIcon, activeIcon: menuPluginsActiveIcon },
+    { kind: "page", path: "/settings", label: t("系统设置"), icon: menuSettingsIcon, activeIcon: menuSettingsActiveIcon },
   ];
 
   return <PageLayout className={styles.root}>
@@ -52,20 +58,46 @@ export function AppLayout() {
           ? <div className={styles.navigationGroup} key={`group-${item.label}`}>{item.label}</div>
           : <div className={styles.navigationRow} key={item.path}>
             <NavLink to={item.path} end={item.path === "/"}>
-              {typeof item.icon === "string"
-                ? <Icon src={item.icon} size="1.3em" />
-                : <Icon icon={item.icon} size="1.3em" />}
-              <span>{item.label}</span>
-              {item.path === "/harness/cursor" && cursorHarness && <span
-                className={styles.menuStatusTag}
-                data-taken={cursorHarness.settings_applied || undefined}
-              >
-                {cursorHarness.settings_applied ? t("已接管") : t("未接管")}
-              </span>}
-              {item.path === "/settings" && availableVersion && <span className={styles.menuIndicatorDot} aria-hidden="true" />}
+              {({ isActive }) => <>
+                {typeof item.icon === "string"
+                  ? <Icon className={styles.menuBrandIcon} src={item.icon} size="1.3em" />
+                  : <Icon className={styles.menuIcon} icon={isActive && item.activeIcon ? item.activeIcon : item.icon} size="1.3em" />}
+                <span>{item.label}</span>
+                {item.path === "/harness/cursor" && cursorHarness && <span
+                  className={styles.menuStatusTag}
+                  data-taken={cursorHarness.settings_applied || undefined}
+                >
+                  {cursorHarness.settings_applied ? t("已接管") : t("未接管")}
+                </span>}
+                {item.path === "/settings" && availableVersion && <span className={styles.menuIndicatorDot} aria-hidden="true" />}
+              </>}
             </NavLink>
           </div>}
         </VirtualList>
+        {availableVersion && (
+          <div className={styles.bottomUpdateCard} role="status">
+            <div className={styles.bottomUpdateHeader}>
+              <span className={styles.bottomUpdateDot} aria-hidden="true" />
+              <div className={styles.bottomUpdateText}>
+                <span className={styles.bottomUpdateTitle}>{t("发现新版本")}</span>
+                <span className={styles.bottomUpdateVersion}>v{availableVersion}</span>
+              </div>
+            </div>
+            <div className={styles.bottomUpdateActions}>
+              <button
+                type="button"
+                className={styles.bottomUpdateInstallBtn}
+                disabled={installing}
+                onClick={() => void updateStore.install()}
+              >
+                {installing ? t("安装中…") : t("立即升级")}
+              </button>
+              <NavLink to="/settings" className={styles.bottomUpdateDetailBtn}>
+                {t("详情")}
+              </NavLink>
+            </div>
+          </div>
+        )}
       </nav>
     </Card>
     <main className={styles.content}>
@@ -76,9 +108,6 @@ export function AppLayout() {
             .actions 自己就 composes 了 liquid，用裸 div 才是唯一可靠的形态。 */}
         <div className={styles.actions}>
           <div ref={setLeftActionTarget} className={styles.pageActions} />
-          {location.pathname !== "/" && <TooltipTrigger label={t("刷新")}><button className={controls.iconButton} aria-label={t("刷新")} disabled={busy} onClick={() => void appStore.refresh()}>
-            <Icon className={busy ? controls.spin : ""} icon={refreshIcon} size="1.1em" />
-          </button></TooltipTrigger>}
           <div ref={setRightActionTarget} className={styles.pageActions} />
         </div>
       </div>

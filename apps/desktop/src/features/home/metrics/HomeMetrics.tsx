@@ -1,5 +1,4 @@
 import { formatCompactInteger, formatInteger } from "../../../shared/utils/numberFormat";
-import { useAppStore } from "../../../shared/store/appStore";
 import { Icon } from "../../../shared/ui/Icon";
 import { useTooltip, type TooltipAnchor } from "../../../shared/ui/Tooltip";
 import { informationOutlineIcon } from "../../../shared/ui/icons";
@@ -14,6 +13,12 @@ export type HomeMetricsData = {
   promptTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  estimatedCostUsd: number;
+  estimatedCacheCostUsd: number;
+  inputCostUsd: number;
+  outputCostUsd: number;
+  cacheReadCostUsd: number;
+  cacheWriteCostUsd: number;
 };
 
 function formatMetricValue(value: number) {
@@ -28,10 +33,6 @@ function formatRate(value: number | null) {
 
 function calculateRate(numerator: number, denominator: number) {
   return denominator > 0 ? numerator / denominator : null;
-}
-
-function priceTokens(tokens: number, pricePerMillion: number) {
-  return (tokens / 1_000_000) * pricePerMillion;
 }
 
 function formatUSD(value: number) {
@@ -60,7 +61,6 @@ function InfoTooltip({ content }: { content: string }) {
 }
 
 export function HomeMetrics({ data, refreshVersion = 0 }: { data: HomeMetricsData; refreshVersion?: number }) {
-  const { pricing } = useAppStore();
   const inputTokens = Math.max(0, data.promptTokens - data.cacheReadTokens - data.cacheWriteTokens);
   const outputTokens = Math.max(0, data.tokenUsage - data.promptTokens);
   const defaultCacheHitRate = calculateRate(data.cacheReadTokens, data.cacheReadTokens + inputTokens);
@@ -69,14 +69,8 @@ export function HomeMetrics({ data, refreshVersion = 0 }: { data: HomeMetricsDat
     data.cacheReadTokens + data.cacheWriteTokens + inputTokens,
   );
   const successfulCallRate = calculateRate(data.successfulCalls, data.llmCalls);
-  const costs = {
-    input: priceTokens(inputTokens, pricing.input_per_million),
-    output: priceTokens(outputTokens, pricing.output_per_million),
-    cacheRead: priceTokens(data.cacheReadTokens, pricing.cache_read_per_million),
-    cacheWrite: priceTokens(data.cacheWriteTokens, pricing.cache_write_per_million),
-  };
-  const totalCost = costs.input + costs.output + costs.cacheRead + costs.cacheWrite;
-  const cacheCost = costs.cacheRead + costs.cacheWrite;
+  const totalCost = data.estimatedCostUsd;
+  const cacheCost = data.estimatedCacheCostUsd;
   const cacheTooltip = [
     t("当前：{rate}", { rate: formatRate(defaultCacheHitRate) }),
     t("公式：缓存读取 /（缓存读取 + 非缓存输入）"),
@@ -106,28 +100,24 @@ export function HomeMetrics({ data, refreshVersion = 0 }: { data: HomeMetricsDat
     t("缓存读写已计入提示词侧统计。"),
   ].join("\n");
   const costTooltip = [
-    t("按配置的 Token 价格估算。"),
+    t("按各模型配置或推荐默认的 Token 价格估算。"),
     t("缓存统计策略：默认口径（{rate}）", { rate: formatRate(defaultCacheHitRate) }),
     "",
-    t("普通输入：{tokens} × ${price}/1M = {cost}", {
+    t("普通输入：{cost}（{tokens} Token）", {
+      cost: formatUSD(data.inputCostUsd),
       tokens: formatMetricValue(inputTokens),
-      price: pricing.input_per_million,
-      cost: formatUSD(costs.input),
     }),
-    t("模型输出：{tokens} × ${price}/1M = {cost}", {
+    t("模型输出：{cost}（{tokens} Token）", {
+      cost: formatUSD(data.outputCostUsd),
       tokens: formatMetricValue(outputTokens),
-      price: pricing.output_per_million,
-      cost: formatUSD(costs.output),
     }),
-    t("缓存读取：{tokens} × ${price}/1M = {cost}", {
+    t("缓存读取：{cost}（{tokens} Token）", {
+      cost: formatUSD(data.cacheReadCostUsd),
       tokens: formatMetricValue(data.cacheReadTokens),
-      price: pricing.cache_read_per_million,
-      cost: formatUSD(costs.cacheRead),
     }),
-    t("缓存写入：{tokens} × ${price}/1M = {cost}", {
+    t("缓存写入：{cost}（{tokens} Token）", {
+      cost: formatUSD(data.cacheWriteCostUsd),
       tokens: formatMetricValue(data.cacheWriteTokens),
-      price: pricing.cache_write_per_million,
-      cost: formatUSD(costs.cacheWrite),
     }),
     "",
     t("合计：{cost}", { cost: formatUSD(totalCost) }),

@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LlmCall } from "../../shared/api";
-import { PageActions } from "../../shell/PageActions";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { CallTable } from "./CallTable";
-import { ColumnSettings } from "./ColumnSettings";
 import { createCallColumns } from "./callColumns";
 import { loadHiddenColumns, saveHiddenColumns } from "./columnVisibility";
 import styles from "./CallsPage.module.scss";
@@ -44,12 +42,17 @@ export function CallsPage() {
   }, []);
 
   const content = <div className={styles.page}>
-    <CallTable calls={calls} columns={columns} hidden={hiddenColumns} />
+    <CallTable
+      calls={calls}
+      columns={columns}
+      hidden={hiddenColumns}
+      onHiddenChange={updateHiddenColumns}
+    />
   </div>;
-  return <>
-    <PageActions>
-      <ColumnSettings specs={columns} hidden={hiddenColumns} onChange={updateHiddenColumns} />
-    </PageActions>
-    <PageContent fixed title={t("调用")} contentClassName={styles.pageContent} sections={[{ key: "calls", estimatedHeight: 720, content }]} />
-  </>;
+  return <PageContent
+    flushTop
+    fixed
+    contentClassName={styles.pageContent}
+    sections={[{ key: "calls", estimatedHeight: 720, content }]}
+  />;
 }

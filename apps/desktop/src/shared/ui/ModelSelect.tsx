@@ -55,7 +55,7 @@ function GroupCheckbox({ label, options, selected, onChange }: {
     if (input.current) input.current.indeterminate = indeterminate;
   }, [indeterminate]);
 
-  return <label className={styles.group}>
+  return <label className={styles.group} title={label}>
     <input
       ref={input}
       type="checkbox"
@@ -66,7 +66,7 @@ function GroupCheckbox({ label, options, selected, onChange }: {
     <span className={styles.checkbox} data-indeterminate={indeterminate || undefined} aria-hidden="true">
       {checked && <Icon icon={checkIcon} size="0.875em" />}
     </span>
-    <span>{label}</span>
+    <span className={styles.groupText}>{label}</span>
   </label>;
 }
 
@@ -93,7 +93,7 @@ export function ModelSelect(props: ModelSelectProps) {
         padding: 10,
         apply: ({ rects, availableHeight }) => setPosition((current) => ({
           ...current,
-          width: rects.reference.width,
+          width: Math.max(280, rects.reference.width),
           maxHeight: Math.max(120, availableHeight),
         })),
       })],
@@ -142,7 +142,7 @@ export function ModelSelect(props: ModelSelectProps) {
   const openMenu = () => {
     if (disabled) return;
     const width = root.current?.getBoundingClientRect().width;
-    if (width) setPosition((current) => ({ ...current, width }));
+    if (width) setPosition((current) => ({ ...current, width: Math.max(280, width) }));
     setOpen(true);
   };
 
@@ -160,7 +160,7 @@ export function ModelSelect(props: ModelSelectProps) {
         onClick={() => { if (open) close(); else openMenu(); }}
         onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); openMenu(); } }}
       >
-        <span>{label}</span><span className={styles.summary} aria-hidden="true">{summary}</span><Icon icon={chevronDownIcon} size="1.1em" />
+        <span>{label}</span><span className={styles.summary} aria-hidden="true">{summary}</span><Icon className={`${styles.chevron} ${open ? styles.chevronOpen : ""}`} icon={chevronDownIcon} size="1.1em" />
       </button>
       {mode === "multiple" && props.value.length > 0 && <button
         type="button"
@@ -200,13 +200,15 @@ export function ModelSelect(props: ModelSelectProps) {
                 selected={selected}
                 onChange={(checked) => toggleGroup(item.options, checked)}
               />
-            : <div className={styles.groupLabel}>{item.label}</div>
+            : <div className={styles.groupLabel} title={item.label}>{item.label}</div>
           : <label
               ref={index === 1 ? firstOption : undefined}
               className={styles.optionRow}
+              data-mode={mode}
               role="option"
               aria-selected={selected.has(item.option.value)}
               tabIndex={index === 1 ? 0 : -1}
+              title={item.option.label}
               onKeyDown={(event) => {
                 if (event.key === " " || event.key === "Enter") {
                   event.preventDefault();
@@ -215,14 +217,21 @@ export function ModelSelect(props: ModelSelectProps) {
               }}
             >
               <input
-                type="checkbox"
+                type={mode === "multiple" ? "checkbox" : "radio"}
+                name={mode === "single" ? menuId : undefined}
                 checked={selected.has(item.option.value)}
                 tabIndex={-1}
                 onChange={() => choose(item.option)}
               />
-              <span className={styles.checkbox} aria-hidden="true">
-                {selected.has(item.option.value) && <Icon icon={checkIcon} size="0.875em" />}
-              </span>
+              {mode === "multiple" ? (
+                <span className={styles.checkbox} aria-hidden="true">
+                  {selected.has(item.option.value) && <Icon icon={checkIcon} size="0.875em" />}
+                </span>
+              ) : (
+                <span className={styles.checkSlot} aria-hidden="true">
+                  {selected.has(item.option.value) && <Icon icon={checkIcon} size="1em" />}
+                </span>
+              )}
               <span className={styles.option}>
                 {(item.option.icon || item.option.iconSrc) && <Icon icon={item.option.icon} src={item.option.iconSrc} />}
                 <span>{item.option.label}</span>

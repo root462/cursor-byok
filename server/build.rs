@@ -7,22 +7,29 @@ fn main() {
     let protos = [proto_dir.join("agent_v1.proto")];
     let aiserver_proto = proto_dir.join("aiserver_v1.proto");
 
-    env::set_var(
-        "PROTOC",
-        protoc_bin_vendored::protoc_bin_path().expect("vendored protoc"),
-    );
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    let out_agent_v1 = out_dir.join("agent.v1.rs");
+    let fallback = manifest.join("src/cursor/protocol/agent.v1.rs");
 
-    let protoc_proto_dir = ascii_proto_dir(&proto_dir);
-
-    prost_build::Config::new()
-        .compile_protos(
-            &[protoc_proto_dir.join("agent_v1.proto")],
-            &[
-                protoc_proto_dir,
-                protoc_bin_vendored::include_path().expect("vendored protobuf includes"),
-            ],
-        )
-        .expect("compile Cursor protobuf schema");
+    if fallback.exists() {
+        std::fs::copy(&fallback, &out_agent_v1).expect("copy fallback agent.v1.rs");
+    } else {
+        env::set_var(
+            "PROTOC",
+            protoc_bin_vendored::protoc_bin_path().expect("vendored protoc"),
+        );
+        let protoc_proto_dir = ascii_proto_dir(&proto_dir);
+        prost_build::Config::new()
+            .compile_protos(
+                &[protoc_proto_dir.join("agent_v1.proto")],
+                &[
+                    protoc_proto_dir,
+                    protoc_bin_vendored::include_path().expect("vendored protobuf includes"),
+                ],
+            )
+            .expect("compile Cursor protobuf schema");
+        let _ = std::fs::copy(&out_agent_v1, &fallback);
+    }
 
     for proto in protos {
         println!("cargo:rerun-if-changed={}", proto.display());

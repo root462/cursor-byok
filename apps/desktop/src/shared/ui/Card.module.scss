@@ -1,10 +1,24 @@
 .root {
-  // 玻璃外观完全来自 liquid-glass.css 的 .liquid，此处只适配卡片尺寸。
+  // 玻璃外观完全来自 liquid-glass.css 的 .liquid，此处适配卡片尺寸。
   composes: liquid from global;
-  --liquid-radius: var(--oa-card-radius);
+  --liquid-radius: var(--oa-card-radius, 20px);
   --liquid-padding: 0;
   --liquid-min-width: 0;
   --liquid-min-height: 0;
+  --liquid-bg: rgba(255, 255, 255, 0.22);
+  --liquid-border: rgba(255, 255, 255, 0.45);
+  --liquid-blur: 8px;
   display: block;
   padding: 0;
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+
+  &:hover {
+    --liquid-bg: rgba(255, 255, 255, 0.30);
+  }
+
+  // 关闭 .liquid 默认的黑色内缩描边伪元素，避免在卡片内部形成黑晕
+  &::before,
+  &::after {
+    display: none !important;
+  }
 }

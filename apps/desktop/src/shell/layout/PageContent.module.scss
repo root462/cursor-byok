@@ -7,6 +7,11 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+
+  &.flushTop {
+    --page-content-top: var(--window-safe-top);
+    --scroll-shadow-top-offset: var(--window-safe-top);
+  }
 }
 
 .title {
@@ -15,15 +20,12 @@
   top: var(--app-content-top);
   left: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
   margin: 0;
-  padding-left:0;
+  padding-left: 0;
   font-size: type.$font-size-xxl;
   font-weight: bolder;
   transform: translateY(-150%);
   -webkit-user-select: none;
   user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
   -webkit-touch-callout: none;
   -webkit-user-drag: none;
   -webkit-app-region: drag;
@@ -32,7 +34,7 @@
 .fixedContent {
   width: calc(100% - var(--app-page-padding) * 2);
   max-width: var(--app-page-max-width);
-  padding-top: var(--app-content-top);
+  padding-top: var(--page-content-top, var(--app-content-top));
   margin-right: auto;
   margin-left: auto;
 }

@@ -4,19 +4,9 @@
  * Author: SYSTEM-NTDEV-PRO <2920160872@qq.com>
  * Copyright (c) 2026 LGOS Studio
  * License: MIT
- *
- * 用法：<link rel="stylesheet" href="./liquid-glass.css" />
- *       <div class="liquid">我的液态玻璃元素</div>
- *
- * 本项目里这是唯一的玻璃样式来源：组件 SCSS 只做排版与尺寸，
- * 玻璃外观一律由下面的 .liquid / .liquid-dark 承担
- * （组件用 `composes: liquid from global`，再覆写 --liquid-* 变量适配尺寸）。
- *
- * 与教程原文唯一的差异：min-width / min-height 改为可被 --liquid-min-* 覆盖，
- * 否则胶囊、徽章之类的小元素会被撑到 3rem 高。默认值仍是教程的 3.5rem / 3rem。
  */
 
- /* Light Mode */
+/* Light Mode */
 
 :root {
   color-scheme: auto;
@@ -45,12 +35,6 @@
   vertical-align: middle;
   box-sizing: border-box;
   overflow: hidden;
-  /* 磨砂的两处坑（教程原文照抄会踩到）：
-     1) 原文这里有 isolation: isolate，它把元素变成 backdrop root，
-        同一元素上的 backdrop-filter 采样不到外部内容，Chromium 计算值直接是 none，
-        玻璃只剩一层半透明白。.liquid 已有 relative + overflow:hidden，去掉无副作用。
-     2) -webkit- 版必须写在无前缀之前，否则压缩器会把无前缀那条当重复声明删掉，
-        产物里只剩 -webkit- 版，backdrop-filter 同样失效。 */
   -webkit-backdrop-filter: blur(calc(var(--liquid-blur) * 0.35)) saturate(160%);
   backdrop-filter: blur(calc(var(--liquid-blur) * 0.35)) saturate(160%);
   box-shadow:
@@ -85,26 +69,6 @@
 .liquid > * {
   position: relative;
   z-index: 1;
-}
-
-/* 官方 demo 页在正文元素上统一把玻璃面覆写为 0.22 白
-   （见其 .example-card / .sample-box / .sample-nav 一组选择器）。
-   应用里底图偏亮，0.22 在图上几乎看不出材质，这里加浓到 0.36；
-   轮廓同时加深到 0.16 黑，否则原版 0.08 的描边在浅色区完全隐形。
-   上面 .liquid 的声明一条未动，全部通过变量覆写。 */
-.liquid {
-  --liquid-bg: rgba(255, 255, 255, 0.52);
-  --liquid-border: rgba(15, 23, 42, 0.18);
-  /* 原版 8px 经过 calc(*0.35) 只剩约 2.8px，背景细节全透上来，像半透明白卡；
-     放大到 26px 才有真正的磨砂雾面。 */
-  --liquid-blur: 26px;
-  /* 顶部渐亮：浅色底上原版那条 1.5px 内高光几乎贴不住，
-     补一层由上至下衰减的白，面板才有玻璃的厚度走向。 */
-  background-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.5) 0%,
-    rgba(255, 255, 255, 0) 38%
-  );
 }
 
 /* Dark Mode */

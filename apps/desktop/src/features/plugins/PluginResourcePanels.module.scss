@@ -3,12 +3,69 @@
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+}
+
+// 液态玻璃卡片体系（与 Cursor 模型配置卡片完全一致的 .liquid 折射边缘与通透度）
+.methodCard,
+.modelCard,
+.providerRow,
+.resourceRow,
+.actionCard {
+  --liquid-radius: 20px;
+  --liquid-padding: 16px 20px;
+  --liquid-bg: rgba(255, 255, 255, 0.22);
+  --liquid-border: rgba(255, 255, 255, 0.45);
+  --liquid-blur: 8px;
+  --liquid-highlight: rgba(255, 255, 255, 0.92);
+
+  border: 1px double var(--liquid-border) !important;
+  border-radius: var(--liquid-radius) !important;
+  background: var(--liquid-bg) !important;
+  -webkit-backdrop-filter: blur(calc(var(--liquid-blur) * 0.35)) saturate(160%) !important;
+  backdrop-filter: blur(calc(var(--liquid-blur) * 0.35)) saturate(160%) !important;
+  box-shadow:
+    inset 1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.92),
+    inset -1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.9),
+    inset 0 0 3px rgba(15, 23, 42, 0.35),
+    0 16px 32px rgba(15, 23, 42, 0.14) !important;
+
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+
+  &:hover {
+    --liquid-bg: rgba(255, 255, 255, 0.30);
+  }
+
+  // 关闭 .liquid 默认的内缩黑边伪元素，避免在卡片内部形成黑晕
+  &::before,
+  &::after {
+    display: none !important;
+  }
+
+  // 深色模式液态玻璃
+  :global(:root[data-theme*="dark"]) & {
+    --liquid-bg: rgba(18, 18, 28, 0.55);
+    --liquid-border: rgba(148, 163, 184, 0.22);
+    --liquid-blur: 12px;
+    --liquid-highlight: rgba(226, 232, 240, 0.75);
+
+    box-shadow:
+      inset 1.5px -1.5px 1px -1px var(--liquid-highlight),
+      inset -1.5px 1.5px 1px -1px rgba(226, 232, 240, 0.65),
+      inset 0 0 12px rgba(2, 6, 23, 0.6),
+      0 8px 24px rgba(2, 6, 23, 0.45),
+      0 2px 6px rgba(2, 6, 23, 0.3) !important;
+
+    &:hover {
+      --liquid-bg: rgba(28, 28, 42, 0.65);
+    }
+  }
 }
 
 .methodCard {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   padding: 16px;
 
@@ -16,6 +73,37 @@
     color: var(--vscode-descriptionForeground);
     font-size: type.$font-size-xs;
   }
+
+.keyInputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.keyInput {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 6px;
+  font-size: type.$font-size-xs;
+  outline: none;
+
+  &:focus {
+    border-color: var(--vscode-focusBorder);
+  }
+}
+}
+
+.spoofHint {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  opacity: 0.75;
+  line-height: 1.5;
+  margin-top: 2px;
 }
 
 .actions,
@@ -24,6 +112,51 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.actions {
+  // 彻底禁用所有按钮鼠标悬浮、点击时的任何过渡动画、缩放和位移动效
+  button {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+
+    &:hover,
+    &:active,
+    &:focus {
+      transition: none !important;
+      animation: none !important;
+      transform: none !important;
+      filter: none !important;
+    }
+  }
+
+  // 通用次级按钮/操作按钮液态玻璃微质感
+  button:not([disabled]) {
+    cursor: pointer;
+  }
+}
+
+.deleteButton {
+  transition: none !important;
+  animation: none !important;
+  transform: none !important;
+
+  &:hover:not(:disabled) {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: rgba(239, 68, 68, 0.38) !important;
+    color: #ef4444 !important;
+  }
+
+  :global(:root[data-theme*="dark"]) &:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.20) !important;
+    border-color: rgba(248, 113, 113, 0.45) !important;
+    color: #fca5a5 !important;
+  }
 }
 
 .deviceCode {
@@ -85,47 +218,317 @@
   }
 }
 
+.modelManager {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .modelToolbar {
   display: flex;
+  align-items: center;
+  gap: 8px;
+
+  button {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+
+    &:hover,
+    &:active,
+    &:focus {
+      transition: none !important;
+      animation: none !important;
+      transform: none !important;
+      filter: none !important;
+    }
+  }
+}
+
+.modelGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.modelCard {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px !important;
+  border-radius: 20px !important;
+  cursor: pointer;
+  overflow: hidden;
+
+  &[data-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+// 内部思考强度容器：通透内嵌磨砂玻璃底座
+.modelCardEffort {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 12px 11px;
+  background: rgba(255, 255, 255, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 13px;
+  -webkit-backdrop-filter: blur(8px) saturate(160%);
+  backdrop-filter: blur(8px) saturate(160%);
+  box-shadow:
+    inset 1px -1px 1px -0.5px rgba(255, 255, 255, 0.88),
+    inset -1px 1px 1px -0.5px rgba(255, 255, 255, 0.78),
+    inset 0 1px 2px rgba(15, 23, 42, 0.05),
+    0 4px 10px rgba(15, 23, 42, 0.04);
+  cursor: default;
+
+  :global(:root[data-theme*="dark"]) & {
+    background: rgba(18, 18, 28, 0.42);
+    border-color: rgba(148, 163, 184, 0.20);
+    box-shadow:
+      inset 1px -1px 1px -0.5px rgba(226, 232, 240, 0.35),
+      inset 0 1px 3px rgba(2, 6, 23, 0.45),
+      0 4px 12px rgba(2, 6, 23, 0.28);
+  }
+}
+
+.effortHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
-.modelTableWrap {
-  min-width: min(520px, 70vw);
+.effortLabel {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
-.modelTable {
+.effortValue {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #2563eb;
+  background: rgba(59, 130, 246, 0.11);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  white-space: nowrap;
+
+  :global(:root[data-theme*="dark"]) & {
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.22);
+    border-color: rgba(96, 165, 250, 0.32);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+}
+
+.effortSliderWrap {
+  --effort-inset: 9px;
+  position: relative;
   width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
 
-  th,
-  td {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--vscode-sideBar-border);
-    text-align: left;
+.effortTrack {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.09);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+
+  :global(:root[data-theme*="dark"]) & {
+    background: rgba(2, 6, 23, 0.52);
+    box-shadow:
+      inset 0 1px 2.5px rgba(0, 0, 0, 0.65),
+      0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+}
+
+.effortFill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: calc(var(--effort-inset) + (100% - var(--effort-inset) * 2) * var(--effort-ratio, 1));
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 52%, #2563eb 100%);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.52),
+    0 0 8px rgba(59, 130, 246, 0.35);
+  transition: width 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.effortTick {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--effort-inset) + (100% - var(--effort-inset) * 2) * var(--tick-ratio, 0));
+  width: 3.5px;
+  height: 3.5px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.24);
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+
+  &:first-of-type,
+  &:last-of-type {
+    opacity: 0;
   }
 
-  th:last-child,
-  td:last-child {
-    width: 72px;
-    text-align: center;
+  &[data-passed] {
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.55);
   }
 
-  td:first-child {
-    min-width: 0;
+  :global(:root[data-theme*="dark"]) & {
+    background: rgba(255, 255, 255, 0.25);
+
+    &[data-passed] {
+      background: rgba(255, 255, 255, 0.92);
+    }
+  }
+}
+
+.effortThumb {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: calc(var(--effort-inset) + (100% - var(--effort-inset) * 2) * var(--effort-ratio, 1));
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border: 1px solid rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 2px 5px rgba(15, 23, 42, 0.16),
+    0 4px 10px rgba(37, 99, 235, 0.18),
+    0 0 0 0.5px rgba(15, 23, 42, 0.08),
+    inset 0 1.5px 1px #ffffff,
+    inset 0 -1px 1px rgba(148, 163, 184, 0.28);
+  pointer-events: none;
+  transition: left 180ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+    box-shadow:
+      inset 0 0.5px 0.5px rgba(255, 255, 255, 0.65),
+      0 1px 2px rgba(37, 99, 235, 0.35);
   }
 
-  .modelName {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+  :global(:root[data-theme*="dark"]) & {
+    background: linear-gradient(180deg, #f8fafc 0%, #cbd5e1 100%);
+    border-color: rgba(255, 255, 255, 0.65);
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.45),
+      0 4px 10px rgba(37, 99, 235, 0.28),
+      inset 0 1px 0 #ffffff;
+  }
+}
+
+.effortRange {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.modelCardTop {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modelIcon {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-sizing: border-box;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  object-fit: contain;
+
+  img,
+  svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+}
+
+.modelCardName {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+
+  .modelCardNameText,
+  .modelCardModelId,
+  .modelCardDescription {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  td span {
+  .modelCardNameText {
+    color: var(--vscode-foreground);
+    font-size: type.$font-size-base;
+    font-weight: 600;
+  }
+
+  .modelCardModelId,
+  .modelCardDescription {
     color: var(--vscode-descriptionForeground);
-    font-size: type.$font-size-xs;
+    font-size: type.$font-size-2xs;
   }
 }
 
@@ -146,19 +549,179 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px;
+  gap: 16px;
+  padding: 16px 20px;
+}
 
-  > div:first-child {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+.rowMain {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rowTitleWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rowTitle {
+  color: var(--vscode-foreground);
+  font-size: type.$font-size-base;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+// 标签胶囊（如 PRO 计划或类型标识）
+.rowTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: type.$font-size-2xs;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+
+  :global(:root[data-theme*="dark"]) & {
+    background: rgba(59, 130, 246, 0.22);
+    color: #93c5fd;
+    border-color: rgba(96, 165, 250, 0.35);
+  }
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: type.$font-size-xs;
+  color: var(--vscode-descriptionForeground);
+}
+
+.rowMetaTag {
+  color: var(--vscode-foreground);
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+.rowMetaDivider {
+  opacity: 0.35;
+}
+
+.metaAvailable {
+  color: var(--vscode-testing-iconPassed, #10b981);
+  font-weight: 500;
+}
+
+.metaPending {
+  color: var(--vscode-editorWarning-foreground, #f59e0b);
+  font-weight: 500;
+}
+
+.rowMetrics {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.metricItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: type.$font-size-xs;
+  color: var(--vscode-descriptionForeground);
+}
+
+.metricDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vscode-testing-iconPassed, #10b981);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+// 液态状态徽章（指示灯微光胶囊）
+.stateBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5.5px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    inset 1px -1px 1px -0.5px rgba(255, 255, 255, 0.8),
+    inset -1px 1px 1px -0.5px rgba(255, 255, 255, 0.6),
+    0 2px 5px rgba(15, 23, 42, 0.04);
+}
+
+.stateDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stateReady {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px double rgba(16, 185, 129, 0.32);
+  color: #059669;
+
+  .stateDot {
+    background: #10b981;
+    box-shadow: 0 0 7px rgba(16, 185, 129, 0.7);
   }
 
-  span {
-    color: var(--vscode-descriptionForeground);
-    font-size: type.$font-size-xs;
+  :global(:root[data-theme*="dark"]) & {
+    background: rgba(16, 185, 129, 0.20);
+    border-color: rgba(52, 211, 153, 0.38);
+    color: #34d399;
+  }
+}
+
+.stateCooling {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px double rgba(245, 158, 11, 0.32);
+  color: #d97706;
+
+  .stateDot {
+    background: #f59e0b;
+    box-shadow: 0 0 7px rgba(245, 158, 11, 0.7);
+  }
+
+  :global(:root[data-theme*="dark"]) & {
+    background: rgba(245, 158, 11, 0.20);
+    border-color: rgba(251, 191, 36, 0.38);
+    color: #fbbf24;
+  }
+}
+
+.stateInvalid {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px double rgba(239, 68, 68, 0.32);
+  color: #dc2626;
+
+  .stateDot {
+    background: #ef4444;
+    box-shadow: 0 0 7px rgba(239, 68, 68, 0.7);
+  }
+
+  :global(:root[data-theme*="dark"]) & {
+    background: rgba(239, 68, 68, 0.20);
+    border-color: rgba(248, 113, 113, 0.38);
+    color: #f87171;
   }
 }
 

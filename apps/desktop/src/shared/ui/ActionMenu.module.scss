@@ -1,6 +1,20 @@
 @use "../../styles/typography" as type;
 
+@keyframes menuIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translate3d(0, -6px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+}
+
 .menu {
+  transform-origin: top left;
+  backface-visibility: hidden;
+  animation: menuIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
   composes: liquid from global;
   --liquid-radius: 6px;
   --liquid-padding: 4px;

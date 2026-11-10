@@ -8,7 +8,19 @@ export type VirtualPageSection = {
   content: ReactNode;
 };
 
-export function VirtualPage({ title, sections, className, contentClassName }: { title?: ReactNode; sections: VirtualPageSection[]; className?: string; contentClassName?: string }) {
+export function VirtualPage({
+  title,
+  sections,
+  className,
+  contentClassName,
+  flushTop = false,
+}: {
+  title?: ReactNode;
+  sections: VirtualPageSection[];
+  className?: string;
+  contentClassName?: string;
+  flushTop?: boolean;
+}) {
   const getKey = useCallback((section: VirtualPageSection) => section.key, []);
   const estimateSize = useCallback((section: VirtualPageSection) => section.estimatedHeight, []);
   const renderItem = useCallback((section: VirtualPageSection, { index }: { index: number }) => <section className={styles.section}>
@@ -24,8 +36,8 @@ export function VirtualPage({ title, sections, className, contentClassName }: { 
     overscan={2}
     itemGap={16}
     scrollbarSize={7}
-    scrollbarInsetTop="var(--app-content-top)"
-    className={[styles.root, "scroll-shadow-top", className].filter(Boolean).join(" ")}
+    scrollbarInsetTop={flushTop ? "var(--window-safe-top)" : "var(--app-content-top)"}
+    className={[styles.root, "scroll-shadow-top", flushTop && styles.flushTop, className].filter(Boolean).join(" ")}
     contentClassName={[styles.content, contentClassName].filter(Boolean).join(" ")}
   />;
 }

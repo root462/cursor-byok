@@ -15,6 +15,7 @@ import { Button } from "../../shared/ui/Button";
 import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
+import { VersionHistoryModal } from "./VersionHistoryModal";
 import styles from "./AppLifecycleSettingsCard.module.scss";
 
 export function AppLifecycleSettingsCard() {
@@ -28,6 +29,7 @@ export function AppLifecycleSettingsCard() {
   const [silentStart, setSilentStart] = useState(false);
   const [dockIconVisible, setDockIconVisible] = useState(true);
   const [loadingDesktopSettings, setLoadingDesktopSettings] = useState(native);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -152,14 +154,24 @@ export function AppLifecycleSettingsCard() {
           ? t("版本 {version} 可以安装", { version: availableVersion })
           : t("当前版本 {version}", { version })}</small>
       </div>
-      {availableVersion
-        ? <Button size="small" variant="primary" disabled={installing} onClick={() => void updateNow()}>
-            {installing ? t("安装中…") : t("下载并安装")}
-            <span className={styles.updateDot} aria-hidden="true" />
-          </Button>
-        : <Button size="small" disabled={!native || checking} onClick={() => void checkUpdate()}>
-            {checking ? t("检查中…") : t("检查更新")}
-          </Button>}
+      <div className={styles.actionGroup}>
+        <Button size="small" onClick={() => setShowHistory(true)}>
+          {t("历史版本")}
+        </Button>
+        {availableVersion
+          ? <Button size="small" variant="primary" disabled={installing} onClick={() => void updateNow()}>
+              {installing ? t("安装中…") : t("下载并安装")}
+              <span className={styles.updateDot} aria-hidden="true" />
+            </Button>
+          : <Button size="small" disabled={!native || checking} onClick={() => void checkUpdate()}>
+              {checking ? t("检查中…") : t("检查更新")}
+            </Button>}
+      </div>
     </div>
+    <VersionHistoryModal
+      open={showHistory}
+      currentVersion={version}
+      onClose={() => setShowHistory(false)}
+    />
   </TitledCard>;
 }

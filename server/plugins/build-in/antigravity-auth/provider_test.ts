@@ -6,6 +6,11 @@ import type {
 } from "cursor-byok:plugin";
 import type { LlmRequest, ModelEvent } from "cursor-byok:provider";
 import type { ResourceSnapshot } from "cursor-byok:resource";
+import {
+  antigravityModels,
+  parseAntigravityModels,
+  resolveModelVariantId,
+} from "./models.ts";
 import { antigravityProvider, isQuotaError } from "./provider.ts";
 import { RESOURCE_TYPE } from "./resources.ts";
 
@@ -143,4 +148,117 @@ Deno.test("isQuotaError identifies rate limits and quota exhaustion", () => {
   assert(isQuotaError("Rate limit exceeded for model"));
   assert(isQuotaError("HTTP 429 Too Many Requests"));
   assert(!isQuotaError("Invalid authorization header"));
+});
+
+Deno.test("parseAntigravityModels only includes models returned by upstream and filters denylist", () => {
+  const models = parseAntigravityModels({
+    models: {
+      "gemini-2.5-pro": {
+        quotaInfo: { remainingFraction: 1 },
+      },
+      "claude-sonnet-4-6": {
+        displayName: "Claude Sonnet 4.6",
+        supportsThinking: true,
+        maxOutputTokens: 64000,
+      },
+      "gemini-4-argon": {
+        displayName: "Gemini 4 Argon",
+        isInternal: true,
+        supportsThinking: true,
+      },
+      "chat_20706": {
+        displayName: "Internal Chat",
+      },
+      "tab_flash_lite_preview": {
+        displayName: "Tab Model",
+      },
+    },
+  });
+
+  assertEquals(models.map((m) => m.id), ["gemini-2.5-pro", "claude-sonnet-4-6", "gemini-4-argon"]);
+  assertEquals(models[0].displayName, "Gemini 2.5 Pro");
+  assertEquals(models[1].displayName, "Claude Sonnet 4.6");
+  assertEquals(models[2].displayName, "Gemini 4 Argon");
+});
+
+Deno.test("parseAntigravityModels consolidates effort variants and deduplicates alias display names", () => {
+  const models = parseAntigravityModels({
+    models: {
+      "claude-opus-5-5-low": {
+        displayName: "Claude Opus 5.5 (Low)",
+        supportsThinking: true,
+        maxOutputTokens: 128000,
+      },
+      "claude-opus-5-5-medium": {
+        displayName: "Claude Opus 5.5 (Medium)",
+        supportsThinking: true,
+        maxOutputTokens: 128000,
+      },
+      "claude-opus-5-5-high": {
+        displayName: "Claude Opus 5.5 (High)",
+        supportsThinking: true,
+        maxOutputTokens: 128000,
+      },
+      "gemini-2.5-flash": {
+        displayName: "Gemini 3.5 Flash Lite",
+        supportsThinking: true,
+      },
+      "gemini-3.5-flash-lite": {
+        displayName: "Gemini 3.5 Flash Lite",
+        supportsThinking: true,
+      },
+    },
+  });
+
+  assertEquals(models.map((m) => m.id), ["claude-opus-5-5", "gemini-3.5-flash-lite"]);
+  assertEquals(models[0].displayName, "Claude Opus 5.5");
+  assertEquals(resolveModelVariantId(models[0], "low"), "claude-opus-5-5-low");
+  assertEquals(resolveModelVariantId(models[0], "medium"), "claude-opus-5-5-medium");
+  assertEquals(resolveModelVariantId(models[0], "high"), "claude-opus-5-5-high");
+  assertEquals(resolveModelVariantId(models[0], null), "claude-opus-5-5-high");
+  assertEquals(models[1].displayName, "Gemini 3.5 Flash Lite");
+});
+
+Deno.test("antigravityModels.list refreshes expired token and returns only discovered models", async () => {
+  const calls: string[] = [];
+  const models = await antigravityModels.list(
+    {
+      resource: snapshot({
+        accessToken: "expired-token",
+        refreshToken: "valid-refresh-token",
+        expiresAtMs: Date.now() - 10_000,
+        projectId: "proj-123",
+      }),
+    },
+    context({
+      fetch: (url, init) => {
+        calls.push(url);
+        if (url === "https://oauth2.googleapis.com/token") {
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({
+              access_token: "fresh-token",
+              expires_in: 3600,
+            }),
+          };
+        }
+        assertEquals(init?.headers?.["authorization"], "Bearer fresh-token");
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            models: {
+              "gemini-2.5-flash": {
+                quotaInfo: { remainingFraction: 0.99 },
+              },
+            },
+          }),
+        };
+      },
+    }),
+  );
+
+  assertEquals(calls[0], "https://oauth2.googleapis.com/token");
+  assertEquals(models.map((m) => m.id), ["gemini-2.5-flash"]);
 });

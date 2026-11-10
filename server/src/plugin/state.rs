@@ -140,6 +140,8 @@ pub struct StoredModel {
     pub images: bool,
     #[serde(default = "default_model_enabled")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
     #[serde(default)]
     pub private_data: serde_json::Value,
 }
@@ -186,11 +188,26 @@ impl StoredModel {
                 .and_then(serde_json::Value::as_u64),
             images: capability("images"),
             enabled: true,
+            reasoning_effort: None,
             private_data: object
                 .get("privateData")
                 .cloned()
                 .unwrap_or(serde_json::Value::Null),
         })
+    }
+
+    pub fn reasoning_efforts(&self) -> Vec<String> {
+        self.private_data
+            .get("reasoningEfforts")
+            .and_then(serde_json::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// 传给插件的模型快照(SDK 的 ModelSnapshot)。
@@ -342,6 +359,7 @@ impl PluginStateStore {
             .map(|mut model| {
                 if let Some(old) = previous.iter().find(|old| old.id == model.id) {
                     model.enabled = old.enabled;
+                    model.reasoning_effort = old.reasoning_effort.clone();
                 }
                 model
             })
@@ -361,6 +379,7 @@ impl PluginStateStore {
         provider_id: &str,
         model_id: &str,
         enabled: bool,
+        reasoning_effort: Option<Option<&str>>,
     ) -> Result<()> {
         let mut models = self.models(plugin_id, provider_id).await?;
         let model = models
@@ -368,6 +387,9 @@ impl PluginStateStore {
             .find(|model| model.id == model_id)
             .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
         model.enabled = enabled;
+        if let Some(effort) = reasoning_effort {
+            model.reasoning_effort = effort.map(str::to_owned);
+        }
         self.data
             .update(
                 plugin_id,

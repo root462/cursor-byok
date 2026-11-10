@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type Overview } from "../../shared/api";
+import { api, configuredPluginModels, type Overview } from "../../shared/api";
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
 import { DailyTokenUsageChart } from "./charts/DailyTokenUsageChart";
 import { HomeMetrics } from "./metrics/HomeMetrics";
@@ -52,7 +52,7 @@ function presetRange(preset: Exclude<OverviewRangePreset, "custom">, now = new D
 }
 
 export function HomePage() {
-  const { overview, busy, models } = useAppStore();
+  const { overview, busy, models, plugins } = useAppStore();
   const [preset, setPreset] = useState<OverviewRangePreset>("month");
   const [quick, setQuick] = useState<QuickPreset | null>(null);
   const [customRange, setCustomRange] = useState<TimeRange | null>(null);
@@ -99,6 +99,12 @@ export function HomePage() {
     promptTokens: filteredOverview.metrics.prompt_tokens,
     cacheReadTokens: filteredOverview.metrics.cache_read_tokens,
     cacheWriteTokens: filteredOverview.metrics.cache_write_tokens,
+    estimatedCostUsd: filteredOverview.metrics.estimated_cost_usd,
+    estimatedCacheCostUsd: filteredOverview.metrics.estimated_cache_cost_usd,
+    inputCostUsd: filteredOverview.metrics.input_cost_usd,
+    outputCostUsd: filteredOverview.metrics.output_cost_usd,
+    cacheReadCostUsd: filteredOverview.metrics.cache_read_cost_usd,
+    cacheWriteCostUsd: filteredOverview.metrics.cache_write_cost_usd,
   };
   const openCustom = (open: boolean) => {
     if (open && !customStart && !customEnd) {
@@ -139,12 +145,21 @@ export function HomePage() {
     setRefreshVersion((version) => version + 1);
   };
   const iconFor = (type: string) => type === "anthropic" ? claudeIcon : openAiIcon;
-  const modelOptions = models.map((model) => ({
-    value: model.model_hash,
-    label: model.display_name,
-    group: modelProviderName(model),
-    icon: iconFor(model.type),
-  }));
+  const pluginModels = configuredPluginModels(plugins);
+  const modelOptions = [
+    ...models.map((model) => ({
+      value: model.model_hash,
+      label: model.display_name,
+      group: modelProviderName(model),
+      icon: iconFor(model.type),
+    })),
+    ...pluginModels.map((pm) => ({
+      value: pm.id,
+      label: pm.displayName || pm.modelId,
+      group: pm.pluginName || t("插件模型"),
+      iconSrc: pm.icon,
+    })),
+  ];
   const sections: VirtualPageSection[] = [
     {
       key: "daily-token-usage",
@@ -186,6 +201,6 @@ export function HomePage() {
       onCustomApply={applyCustom}
       onRefresh={() => void refresh()}
     /></PageActions>
-    <PageContent title={t("概览")} sections={sections} />
+    <PageContent sections={sections} />
   </>;
 }

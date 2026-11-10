@@ -17,15 +17,23 @@
   }
 }
 @keyframes dialogIn {
-  from {
+  0% {
     opacity: 0;
-    transform: translate3d(0, 14px, 0) scale(0.972);
+    transform: translate3d(0, 18px, 0) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 @keyframes dialogOut {
-  to {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
     opacity: 0;
-    transform: translate3d(0, 8px, 0) scale(0.985);
+    transform: translate3d(0, 10px, 0) scale(0.975);
   }
 }
 
@@ -39,9 +47,9 @@
   // 原来这里是 52% 纯黑：弹窗底下整片被压成同一个灰，backdrop-filter 采样到的
   // 只有这一片灰，再怎么调透明度都是块白板。压暗浓度降到 24% 并整体轻磨砂，
   // 底下的页面形状与色彩才留得住，弹窗的玻璃才有东西可以折射。
-  background: rgb(15 23 42 / 34%);
+  background: rgb(15 23 42 / 14%);
   // 遮罩只淡入底色，不动 opacity（原因见文件顶部）。
-  animation: maskIn 200ms ease-out;
+  animation: maskIn 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mask[data-state="closing"] {
@@ -68,7 +76,7 @@
   -webkit-backdrop-filter: blur(7px) saturate(115%);
   backdrop-filter: blur(7px) saturate(115%);
   // 模糊值从 0 起，否则遮罩一出现整屏就“啪”地糊掉。
-  animation: maskBlurIn 220ms ease-out;
+  animation: maskBlurIn 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -92,9 +100,8 @@
   --liquid-padding: 0;
   --liquid-min-width: 0;
   --liquid-min-height: 0;
-  // 88% 白几乎盖死了背后的画面，弹窗就只剩一张白纸。
-  // 大面板要读密集表单，降到 56%：既能透出底下的色彩，正文依然够黑够清楚。
-  --liquid-bg: rgb(255 255 255 / 52%);
+  // 弹窗底色通透化，让下方的液态动态渐变背景自然透出
+  --liquid-bg: rgb(255 255 255 / 28%);
   // 深色描边减淡：让上面那道白色高光当主角，轮廓才不会像贴了张黑框。
   --liquid-border: rgb(15 23 42 / 12%);
   // 面板面积大，模糊半径跟着放大，否则边缘透出来的文字轮廓会抢读。
@@ -111,7 +118,10 @@
   overflow: hidden;
   // 面板本身淡入 + 轻微上浮。这里是元素自身的 opacity（不是祖先），
   // 不影响它自己的 backdrop-filter。
-  animation: dialogIn 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  transform-origin: center center;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  animation: dialogIn 280ms cubic-bezier(0.16, 1, 0.3, 1);
   // 玻璃的厚度：光从左上打过来，所以左上是一道近白的高光，右下是一条极淡的冷影，
   // 再叠一层顶部渐亮与底部渐暗，大面板才有“一块玻璃”而不是“一张白卡”的立体感。
   box-shadow:
@@ -135,11 +145,46 @@
   footer {
     flex: 0 0 auto;
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    padding: 10px 18px;
+    padding: 12px 18px;
     border-top: 1px solid rgb(15 23 42 / 8%);
     background: linear-gradient(0deg, rgb(255 255 255 / 28%), rgb(255 255 255 / 0%));
+
+    :global([data-theme*="dark"]) & {
+      border-top-color: rgba(255, 255, 255, 0.08);
+      background: linear-gradient(0deg, rgba(255, 255, 255, 0.04), transparent);
+    }
+
+    button,
+    .footerButton {
+      min-height: 28px !important;
+      height: 28px !important;
+      padding: 0 14px !important;
+      font-size: type.$font-size-xs !important;
+      font-weight: 500 !important;
+      border-radius: 9999px !important;
+      box-sizing: border-box !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      cursor: pointer !important;
+
+      // 彻底消除任何鼠标悬浮、点击时的过渡动画、缩放和位移动效
+      transition: none !important;
+      animation: none !important;
+      transform: none !important;
+
+      &:hover,
+      &:active,
+      &:focus {
+        transition: none !important;
+        animation: none !important;
+        transform: none !important;
+        filter: none !important;
+      }
+    }
   }
 }
 
@@ -160,12 +205,29 @@
    摊到 600px 高的弹窗上等于上半屏被白雾盖住，玻璃的透色全没了。
    这里把它收到顶部一小段，只当作玻璃上沿的反光。 */
 .dialog.dialog {
-  background-image: linear-gradient(
-    180deg,
-    rgb(255 255 255 / 34%) 0%,
-    rgb(255 255 255 / 8%) 10%,
-    rgb(255 255 255 / 0%) 24%
-  );
+  background-image:
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / 26%) 0%,
+      rgb(255 255 255 / 6%) 12%,
+      rgb(255 255 255 / 0%) 28%
+    ),
+    radial-gradient(55% 48% at 14% 22%, rgba(255, 145, 190, 0.36) 0%, rgba(255, 145, 190, 0) 72%),
+    radial-gradient(52% 48% at 86% 20%, rgba(185, 145, 255, 0.34) 0%, rgba(185, 145, 255, 0) 72%),
+    radial-gradient(55% 50% at 22% 82%, rgba(130, 215, 255, 0.32) 0%, rgba(130, 215, 255, 0) 72%),
+    radial-gradient(50% 48% at 82% 80%, rgba(110, 235, 220, 0.28) 0%, rgba(110, 235, 220, 0) 72%);
+
+  :global(:root[data-theme*="dark"]) & {
+    background-image:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 8%) 0%,
+        rgb(255 255 255 / 0%) 24%
+      ),
+      radial-gradient(55% 48% at 14% 22%, rgba(255, 95, 145, 0.16) 0%, transparent 72%),
+      radial-gradient(52% 48% at 86% 20%, rgba(168, 85, 247, 0.16) 0%, transparent 72%),
+      radial-gradient(55% 50% at 22% 82%, rgba(56, 180, 255, 0.15) 0%, transparent 72%);
+  }
 }
 
 /* 斜向反光：玻璃被光扫过的那种不匀。
@@ -185,7 +247,14 @@
 
 .wide {
   width: min(1080px, calc(100vw - 48px));
-}.compact {
+}
+
+.square {
+  width: min(880px, calc(100vw - 48px));
+  height: min(780px, calc(100vh - var(--window-header-height) - 24px));
+}
+
+.compact {
   width: min(560px, calc(100vw - 48px));
 }
 

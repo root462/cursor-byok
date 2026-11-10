@@ -16,6 +16,10 @@ use crate::{config, Error, Result};
 
 const MANIFEST_FILE_NAME: &str = "plugin.json";
 const MAX_ICON_BYTES: u64 = 1024 * 1024;
+const HIDDEN_PLUGIN_IDS: &[&str] = &[
+    "dev.cursorbyok.plugins.zcode",
+    "dev.cursorbyok.plugins.opencode-auth",
+];
 
 #[derive(Clone)]
 pub struct PluginCatalog {
@@ -85,6 +89,9 @@ impl PluginCatalog {
                 .await
                 {
                     Ok(entry) => {
+                        if HIDDEN_PLUGIN_IDS.contains(&entry.manifest.id.as_str()) {
+                            continue;
+                        }
                         if plugins.contains_key(&entry.manifest.id) {
                             tracing::warn!(plugin = %entry.manifest.id, path = %directory.display(), "ignoring duplicate plugin");
                         } else {
@@ -117,9 +124,11 @@ impl PluginCatalog {
                     Ok((manifest, icon))
                 })();
                 if let Ok((manifest, icon)) = loaded {
-                    plugins
-                        .entry(manifest.id.clone())
-                        .or_insert((manifest, icon));
+                    if !HIDDEN_PLUGIN_IDS.contains(&manifest.id.as_str()) {
+                        plugins
+                            .entry(manifest.id.clone())
+                            .or_insert((manifest, icon));
+                    }
                 }
             }
         }

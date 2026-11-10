@@ -1,40 +1,48 @@
 @use "../../styles/typography" as type;
 
 .root {
+  composes: liquid from global;
+  --liquid-radius: 10px;
+  --liquid-padding: 7px 11px;
+  --liquid-min-width: 0;
+  --liquid-min-height: 0;
+  --liquid-bg: rgba(255, 255, 255, 0.32);
+  --liquid-border: rgba(255, 255, 255, 0.5);
+  --liquid-blur: 6px;
   min-width: 0;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 7px 9px;
-  border: 1px solid transparent;
-  border-radius: 6px;
   font-size: type.$font-size-xs;
+
+  &::before {
+    display: none;
+  }
 }
 
 .idle {
   color: var(--vscode-descriptionForeground);
-  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  --liquid-bg: rgba(255, 255, 255, 0.28);
 }
 
 .testing {
   color: var(--vscode-textLink-foreground);
-  background: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 24%, transparent);
+  --liquid-bg: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, rgba(255, 255, 255, 0.32));
+  --liquid-border: color-mix(in srgb, var(--vscode-textLink-foreground) 30%, transparent);
 }
 
 .success {
   color: var(--vscode-testing-iconPassed, #73c991);
-  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 11%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 28%, transparent);
+  --liquid-bg: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 12%, rgba(255, 255, 255, 0.32));
+  --liquid-border: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 35%, transparent);
 }
 
 .error {
   color: var(--vscode-errorForeground, #f48771);
-  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 28%, transparent);
+  --liquid-bg: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 12%, rgba(255, 255, 255, 0.32));
+  --liquid-border: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 35%, transparent);
 }
 
 .compact {

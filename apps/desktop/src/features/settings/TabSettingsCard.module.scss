@@ -9,8 +9,8 @@
 
 .content {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 16px;
+  padding: 18px;
 }
 
 .row {
@@ -19,39 +19,33 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 24px;
 }
 
 .description {
   min-width: 0;
+  flex: 1 1 auto;
   display: grid;
   gap: 5px;
 
   small {
     color: var(--vscode-descriptionForeground);
     font-size: type.$font-size-xs;
+    line-height: 1.5;
   }
 }
 
 .control {
-  width: min(320px, 50%);
-}
-
-.modelControl {
-  width: min(420px, 60%);
+  width: min(460px, 58%);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .fieldError {
   display: block;
   margin-top: 5px;
   color: var(--vscode-errorForeground, #f48771);
-  font-size: type.$font-size-xs;
-}
-
-.fieldHint {
-  display: block;
-  margin-top: 5px;
-  color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-xs;
 }
 
@@ -83,7 +77,9 @@
 .discoverButton {
   min-height: 34px;
   height: 34px;
+  --liquid-min-height: 34px;
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 @media (max-width: 680px) {
@@ -94,7 +90,6 @@
   }
 
   .control,
-  .modelControl,
   .value {
     width: 100%;
     max-width: none;

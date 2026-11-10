@@ -4,10 +4,11 @@ import Sortable from "sortablejs";
 import type { Model } from "../../shared/api";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
-import { chevronDownIcon, chevronRightIcon, claudeIcon, dragIcon, editIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
+import { chevronDownIcon, chevronRightIcon, claudeIcon, editIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
 import { TruncatedButton } from "../../shared/ui/TruncatedButton";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
+import { resolveModelBrandIcon } from "./modelBrandIcon";
 
 export type CursorModelGrouping = "flat" | "provider" | "type";
 
@@ -123,10 +124,16 @@ function ModelListRow({ model, disabled, testing, result, onTest, onEdit, onDupl
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
+  const brand = resolveModelBrandIcon(model);
   return <div className={styles.modelRow}>
-    <div className={styles.modelRowName}>
-      <span className={styles.modelRowNameText}>{model.display_name}</span>
-      <span className={styles.modelRowModelId}>{model.model_id}</span>
+    <div className={styles.modelRowLeft}>
+      <div className={styles.modelAvatarSmall} aria-hidden="true">
+        {brand.src ? <img src={brand.src} alt="" /> : <Icon icon={brand.icon} size="1.15em" />}
+      </div>
+      <div className={styles.modelRowName}>
+        <span className={styles.modelRowNameText}>{model.display_name}</span>
+        <span className={styles.modelRowModelId}>{model.model_id}</span>
+      </div>
     </div>
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
@@ -163,7 +170,8 @@ function ModelGrid({
       animation: 160,
       dataIdAttr: "data-model-hash",
       draggable: `.${styles.modelCard}`,
-      handle: `.${styles.sortHandle}`,
+      filter: "button, a, input, select, textarea, [data-prevent-drag]",
+      preventOnFilter: false,
       ghostClass: styles.sortGhost,
       chosenClass: styles.sortChosen,
       dragClass: styles.sortDragging,
@@ -204,18 +212,24 @@ function ModelGrid({
     {models.map((model) => {
       const result = testResults.get(model.model_hash);
       const testing = testingModelHashes.has(model.model_hash);
-      return <Card className={styles.modelCard} data-model-hash={model.model_hash} key={model.model_hash}>
-        {sortableEnabled && <button type="button" className={styles.sortHandle} disabled={disabled} aria-label={t("拖动排序")} title={t("拖动排序")} onClick={(event) => event.stopPropagation()}>
-          <Icon icon={dragIcon} size="1.25em" />
-        </button>}
+      const brand = resolveModelBrandIcon(model);
+      return <Card className={styles.modelCard} data-model-hash={model.model_hash} data-sortable={sortableEnabled && !disabled ? "true" : undefined} key={model.model_hash}>
         <div className={styles.modelCardContent}>
           <div className={styles.modelCardTop}>
-            <div className={styles.modelCardName}>
-              <span className={styles.modelCardNameText}>{model.display_name}</span>
-              <span className={styles.modelCardModelId}>{model.model_id}</span>
+            <div className={styles.modelCardTitleGroup}>
+              <div className={styles.modelAvatar} aria-hidden="true">
+                {brand.src ? (
+                  <img src={brand.src} alt="" />
+                ) : (
+                  <Icon icon={brand.icon} size="1.35em" />
+                )}
+              </div>
+              <div className={styles.modelCardName}>
+                <span className={styles.modelCardNameText}>{model.display_name}</span>
+                <span className={styles.modelCardModelId}>{model.model_id}</span>
+              </div>
             </div>
             <span className={styles.modelTypeBadge}>
-              <Icon icon={model.type === "anthropic" ? claudeIcon : openAiIcon} />
               {model.type === "anthropic" ? "Anthropic" : "OpenAI"}
             </span>
           </div>

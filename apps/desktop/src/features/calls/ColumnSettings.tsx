@@ -8,7 +8,7 @@ import { chevronDownIcon } from "../../shared/ui/icons";
 import type { CallColumnSpec } from "./callColumns";
 import styles from "./ColumnSettings.module.scss";
 
-/** 调用表格右上角的列显隐面板。勾选变化即时生效，由调用方负责持久化。 */
+/** 调用表格下方的列显隐面板。勾选变化即时生效，由调用方负责持久化。 */
 export function ColumnSettings({ specs, hidden, onChange }: {
   specs: CallColumnSpec[];
   hidden: ReadonlySet<string>;
@@ -23,7 +23,7 @@ export function ColumnSettings({ specs, hidden, onChange }: {
     if (!open || !trigger.current || !menu.current) return;
     return autoUpdate(trigger.current, menu.current, () =>
       void computePosition(trigger.current!, menu.current!, {
-        placement: "bottom-end",
+        placement: "top-start",
         middleware: [offset(5), flip({ padding: 10 }), shift({ padding: 10 })],
       }).then(({ x, y }) => setPosition({ left: x, top: y })));
   }, [open]);
@@ -51,12 +51,13 @@ export function ColumnSettings({ specs, hidden, onChange }: {
     <Button
       ref={trigger}
       size="small"
+      className={styles.trigger}
       aria-haspopup="dialog"
       aria-expanded={open}
       onClick={() => setOpen((current) => !current)}
       onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
     >
-      {t("列")}
+      {t("列设置")}
       <Icon icon={chevronDownIcon} size="1em" className={open ? styles.openIcon : undefined} />
     </Button>
     {open && createPortal(

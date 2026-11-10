@@ -6,13 +6,13 @@
 
 :root {
   // 卡片统一走大圆角（原 9px 偏方正，和液态玻璃的柔和感不搭）。
-  --oa-card-radius: 16px;
-  --oa-overlay-radius: 12px;
+  --oa-card-radius: 20px;
+  --oa-overlay-radius: 14px;
 }
 
 :root:not([data-platform="macos"]) {
-  --oa-card-radius: 14px;
-  --oa-overlay-radius: 10px;
+  --oa-card-radius: 20px;
+  --oa-overlay-radius: 14px;
 }
 
 :root,

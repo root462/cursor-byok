@@ -16,6 +16,8 @@ pub struct PluginManifest {
     pub name: String,
     /// 插件自身版本;内置插件预装时以它为缓存键决定是否重新落盘。
     pub version: String,
+    #[serde(default)]
+    pub author: Option<String>,
     /// 插件要求的最低应用版本;应用过旧时插件被忽略。
     #[serde(default)]
     pub min_app_version: Option<String>,

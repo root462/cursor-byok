@@ -12,13 +12,20 @@ import { TruncatedButton } from "../../shared/ui/TruncatedButton";
 import { PluginAddPanel, PluginSettingsPanel } from "./PluginResourcePanels";
 import styles from "./PluginManagementPage.module.scss";
 
+const HIDDEN_PLUGIN_IDS = new Set([
+  "dev.cursorbyok.plugins.opencode-auth",
+  "dev.cursorbyok.plugins.zcode",
+  "dev.cursorbyok.plugins.zcode-auth",
+]);
+
 export function PluginManagementPage() {
   const { pluginRuntime, plugins } = useAppStore();
+  const visiblePlugins = plugins.filter((plugin) => !HIDDEN_PLUGIN_IDS.has(plugin.id));
   const [progressOpen, setProgressOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [selected, setSelected] = useState<{ pluginId: string; mode: "add" | "settings" } | null>(null);
   const cancelRequested = useRef(false);
-  const selectedPlugin = selected ? plugins.find((plugin) => plugin.id === selected.pluginId) ?? null : null;
+  const selectedPlugin = selected ? visiblePlugins.find((plugin) => plugin.id === selected.pluginId) ?? null : null;
 
   useEffect(() => {
     if (!pluginRuntime) void appStore.refreshPluginRuntime();
@@ -54,15 +61,15 @@ export function PluginManagementPage() {
   };
 
   const content = pluginRuntime?.state === "ready"
-    ? <PluginCards plugins={plugins} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
+    ? <PluginCards plugins={visiblePlugins} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
     : <RuntimeGate status={pluginRuntime} starting={starting} onInitialize={() => void initialize()} />;
-  const estimatedHeight = plugins.length > 0
-    ? Math.max(320, Math.ceil(plugins.length / 3) * 180)
+  const estimatedHeight = visiblePlugins.length > 0
+    ? Math.max(320, Math.ceil(visiblePlugins.length / 3) * 180)
     : 320;
 
   return <>
     <PageContent
-      title={t("插件配置")}
+      flushTop
       sections={[{ key: "installed-plugins", estimatedHeight, content }]}
     />
     <RuntimeProgressModal
@@ -213,7 +220,7 @@ function PluginCard({ plugin, onOpen }: {
         <span
           className={`${styles.stateBadge} ${configured ? styles.stateReady : ""}`}
         >
-          {configured ? t("已配置") : t("未配置")}
+          {configured ? t("已配置") : accountCount > 0 ? t("未就绪") : t("未配置")}
         </span>
       </div>
       <div className={styles.pluginMeta}>
@@ -232,7 +239,7 @@ function PluginCard({ plugin, onOpen }: {
           label={t("添加账号")}
           onClick={() => onOpen(plugin.id, "add")}
         />
-        {configured && (
+        {(configured || accountCount > 0) && (
           <TruncatedButton
             size="small"
             className={styles.manageAccounts}

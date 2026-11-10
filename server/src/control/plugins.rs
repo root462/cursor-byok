@@ -135,8 +135,21 @@ pub async fn set_model_enabled(
         .get("enabled")
         .and_then(serde_json::Value::as_bool)
         .ok_or_else(|| crate::Error::Config("enabled must be a boolean".into()))?;
+    let reasoning_effort = match input.get("reasoningEffort") {
+        None => None,
+        Some(serde_json::Value::Null) => Some(None),
+        Some(serde_json::Value::String(value)) => {
+            let trimmed = value.trim();
+            Some((!trimmed.is_empty()).then_some(trimmed))
+        }
+        Some(_) => {
+            return Err(crate::Error::Config(
+                "reasoningEffort must be a string or null".into(),
+            ))
+        }
+    };
     service
-        .plugin_set_model_enabled(&plugin_id, &provider_id, model_id, enabled)
+        .plugin_set_model_enabled(&plugin_id, &provider_id, model_id, enabled, reasoning_effort)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

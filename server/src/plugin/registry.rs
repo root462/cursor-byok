@@ -159,6 +159,7 @@ impl PluginRegistry {
                     id: manifest.id,
                     name: manifest.name,
                     version: manifest.version,
+                    author: manifest.author,
                     icon,
                     providers: Vec::new(),
                     resources: Vec::new(),
@@ -260,6 +261,13 @@ impl PluginRegistry {
                 )),
                 None => None,
             };
+            let mut invocation = invocation;
+            if invocation.request.model.reasoning.effort.is_none() {
+                if let Some(effort) = stored.reasoning_effort.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                    invocation.request.model.reasoning.effort = Some(effort.to_owned());
+                    invocation.request.model.reasoning.enabled = true;
+                }
+            }
             let request = wire::llm_request(&invocation)?;
             let params = serde_json::json!({
                 "providerId": provider_id,
@@ -941,6 +949,7 @@ impl PluginRegistry {
         provider_id: &str,
         model_id: &str,
         enabled: bool,
+        reasoning_effort: Option<Option<&str>>,
     ) -> Result<()> {
         let executable = self.executable()?;
         let entry = self.find_entry(&executable, plugin_id).await?;
@@ -952,7 +961,7 @@ impl PluginRegistry {
         }
         self.inner
             .state
-            .set_model_enabled(plugin_id, provider_id, model_id, enabled)
+            .set_model_enabled(plugin_id, provider_id, model_id, enabled, reasoning_effort)
             .await
     }
 
@@ -1023,6 +1032,7 @@ impl PluginRegistry {
             id: plugin_id.clone(),
             name: entry.manifest.name.clone(),
             version: entry.manifest.version.clone(),
+            author: entry.manifest.author.clone(),
             icon: entry.icon.clone(),
             providers,
             resources,
@@ -1144,34 +1154,61 @@ impl PluginRegistry {
             )));
         }
         let plugin_id = &entry.manifest.id;
-        let resource = match &provider.resource_type {
+        let resources = match &provider.resource_type {
             Some(resource_type) => {
-                let record = self.select_resource(plugin_id, resource_type).await?;
-                Some(record.snapshot(resource_type))
+                let records = self.inner.state.resources(plugin_id, resource_type).await?;
+                if records.is_empty() {
+                    return Err(Error::Provider(format!(
+                        "plugin '{plugin_id}' has no '{resource_type}' resource; add one first"
+                    )));
+                }
+                let now = now_ms();
+                let ready = records
+                    .iter()
+                    .filter(|record| record.state.is_ready(now))
+                    .map(|record| Some(record.snapshot(resource_type)))
+                    .collect::<Vec<_>>();
+                if ready.is_empty() {
+                    vec![Some(records[0].snapshot(resource_type))]
+                } else {
+                    ready
+                }
             }
-            None => None,
+            None => vec![None],
         };
-        let value = self
-            .worker(entry, executable)
-            .await
-            .invoke(
-                "models.list",
-                serde_json::json!({ "providerId": provider.id, "resource": resource }),
-                CancellationToken::new(),
-            )
-            .await?;
-        let definitions = value
-            .as_array()
-            .ok_or_else(|| Error::Protocol("plugin models.list must return an array".into()))?;
-        let mut models = Vec::with_capacity(definitions.len());
+        let worker = self.worker(entry, executable).await;
+        let mut models = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        for definition in definitions {
-            let model = StoredModel::from_definition(definition)?;
-            if seen.insert(model.id.clone()) {
-                models.push(model);
+        let mut last_error = None;
+        for resource in resources {
+            match worker
+                .invoke(
+                    "models.list",
+                    serde_json::json!({ "providerId": provider.id, "resource": resource }),
+                    CancellationToken::new(),
+                )
+                .await
+            {
+                Ok(value) => {
+                    let definitions = value.as_array().ok_or_else(|| {
+                        Error::Protocol("plugin models.list must return an array".into())
+                    })?;
+                    for definition in definitions {
+                        let model = StoredModel::from_definition(definition)?;
+                        if seen.insert(model.id.clone()) {
+                            models.push(model);
+                        }
+                    }
+                }
+                Err(error) => {
+                    last_error = Some(error);
+                }
             }
         }
         if models.is_empty() {
+            if let Some(error) = last_error {
+                return Err(error);
+            }
             return Err(Error::Provider(format!(
                 "plugin provider '{}' returned no models",
                 provider.id

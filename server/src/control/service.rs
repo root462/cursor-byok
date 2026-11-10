@@ -267,9 +267,10 @@ impl ControlService {
         provider_id: &str,
         model_id: &str,
         enabled: bool,
+        reasoning_effort: Option<Option<&str>>,
     ) -> Result<()> {
         self.plugins
-            .set_model_enabled(plugin_id, provider_id, model_id, enabled)
+            .set_model_enabled(plugin_id, provider_id, model_id, enabled, reasoning_effort)
             .await
     }
 

@@ -4,12 +4,17 @@
   width: 100%;
   height: 100%;
   min-height: 0;
+
+  &.flushTop {
+    --page-content-top: var(--window-safe-top);
+    --scroll-shadow-top-offset: var(--window-safe-top);
+  }
 }
 
 .content {
   width: calc(100% - var(--app-page-padding) * 2);
   max-width: var(--app-page-max-width);
-  padding-top: var(--app-content-top);
+  padding-top: var(--page-content-top, var(--app-content-top));
   padding-bottom: var(--app-page-padding);
   margin-right: auto;
   margin-left: auto;

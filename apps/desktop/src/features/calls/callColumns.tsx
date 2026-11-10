@@ -1,5 +1,4 @@
 import type { LlmCall } from "../../shared/api";
-import controls from "../../shared/ui/Controls.module.scss";
 import type { DataTableColumn } from "../../shared/ui/DataTable";
 import { Icon } from "../../shared/ui/Icon";
 import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
@@ -26,6 +25,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
     {
       key: "status",
       label: t("状态"),
+      fixed: true,
       column: {
         key: "status",
         header: t("状态"),
@@ -37,6 +37,30 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
           >
             {call.status}
           </span>
+        ),
+      },
+    },
+    {
+      key: "actions",
+      label: t("操作"),
+      fixed: true,
+      column: {
+        key: "actions",
+        header: t("操作"),
+        className: styles.actionCol,
+        render: (call) => (
+          <TooltipTrigger label={t("查看详情")}>
+            <button
+              className={styles.detailButton}
+              aria-label={t("查看详情")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDetails(call);
+              }}
+            >
+              <Icon icon={eyeIcon} size="1.1em" />
+            </button>
+          </TooltipTrigger>
         ),
       },
     },
@@ -350,27 +374,6 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
         key: "call_index",
         header: "Call Index",
         render: (call) => call.provider_call_index,
-      },
-    },
-    {
-      key: "actions",
-      label: t("操作"),
-      fixed: true,
-      column: {
-        key: "actions",
-        header: t("操作"),
-        sticky: "right",
-        render: (call) => (
-          <TooltipTrigger label={t("查看详情")}>
-            <button
-              className={controls.iconButton}
-              aria-label={t("查看详情")}
-              onClick={() => onDetails(call)}
-            >
-              <Icon icon={eyeIcon} size="1.1em" />
-            </button>
-          </TooltipTrigger>
-        ),
       },
     },
   ];

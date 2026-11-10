@@ -371,6 +371,48 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   };
 }
 
+export async function refreshAccessToken(
+  refreshToken: string,
+  network: PluginContext["network"],
+): Promise<
+  | { ok: true; accessToken: string; refreshToken: string; expiresAtMs: number }
+  | { ok: false; revoked: boolean }
+> {
+  const response = await network.fetch(REFRESH_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }).toString(),
+  });
+
+  if (response.status < 200 || response.status >= 300) {
+    const bodyText = response.body.toLowerCase();
+    const revoked = bodyText.includes("invalid_grant") || bodyText.includes("unauthorized_client");
+    return { ok: false, revoked };
+  }
+
+  const body = object(JSON.parse(response.body));
+  const accessToken = text(body?.access_token);
+  if (!accessToken) {
+    return { ok: false, revoked: false };
+  }
+  const nextRefreshToken = text(body?.refresh_token) ?? refreshToken;
+  const expiresIn = typeof body?.expires_in === "number" ? body.expires_in : 3600;
+  return {
+    ok: true,
+    accessToken,
+    refreshToken: nextRefreshToken,
+    expiresAtMs: Date.now() + expiresIn * 1000,
+  };
+}
+
 export async function refreshAccount(
   resource: ResourceSnapshot,
   context: PluginContext,
@@ -382,24 +424,10 @@ export async function refreshAccount(
   let expiresAtMs = data.expiresAtMs ?? null;
 
   if (refreshToken) {
-    const response = await context.network.fetch(REFRESH_TOKEN_URL, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-      }).toString(),
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-      const bodyText = response.body.toLowerCase();
+    const refreshed = await refreshAccessToken(refreshToken, context.network);
+    if (!refreshed.ok) {
       // Only mark invalid if token is revoked or client is invalid
-      if (bodyText.includes("invalid_grant") || bodyText.includes("unauthorized_client")) {
+      if (refreshed.revoked) {
         return {
           state: {
             status: "invalid",
@@ -413,11 +441,9 @@ export async function refreshAccount(
       };
     }
 
-    const body = object(JSON.parse(response.body));
-    accessToken = text(body?.access_token) ?? accessToken;
-    refreshToken = text(body?.refresh_token) ?? refreshToken;
-    const expiresIn = typeof body?.expires_in === "number" ? body.expires_in : 3600;
-    expiresAtMs = Date.now() + expiresIn * 1000;
+    accessToken = refreshed.accessToken;
+    refreshToken = refreshed.refreshToken;
+    expiresAtMs = refreshed.expiresAtMs;
   }
 
   // Fetch real-time quota and project ID

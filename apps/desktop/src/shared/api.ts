@@ -187,11 +187,19 @@ export interface CommitSettingsView extends CommitSettings {
   default_prompt: string;
 }
 
+export interface ModelPricing {
+  input_per_million: number;
+  output_per_million: number;
+  cache_read_per_million: number;
+  cache_write_per_million: number;
+}
+
 export interface TokenPricingSettings {
   input_per_million: number;
   output_per_million: number;
   cache_read_per_million: number;
   cache_write_per_million: number;
+  models?: Record<string, ModelPricing>;
 }
 
 export type PluginRuntimeState = "uninitialized" | "initializing" | "ready" | "failed" | "unsupported";
@@ -313,6 +321,8 @@ export interface PluginModelDescriptor {
   maxOutputTokens: number | null;
   images: boolean;
   enabled: boolean;
+  reasoningEfforts?: string[];
+  reasoningEffort?: string | null;
 }
 
 export interface PluginProviderDescriptor {
@@ -331,6 +341,7 @@ export interface PluginDescriptor {
   id: string;
   name: string;
   version: string;
+  author: string | null;
   icon: string;
   providers: PluginProviderDescriptor[];
   resources: PluginResourceDescriptor[];
@@ -378,6 +389,12 @@ export interface OverviewMetrics {
   cache_read_tokens: number;
   cache_write_tokens: number;
   output_tokens: number;
+  estimated_cost_usd: number;
+  estimated_cache_cost_usd: number;
+  input_cost_usd: number;
+  output_cost_usd: number;
+  cache_read_cost_usd: number;
+  cache_write_cost_usd: number;
 }
 
 export type TokenUsageGranularity = "minute" | "hour" | "day";
@@ -545,7 +562,7 @@ export const api = {
   pluginResourceAction: (pluginId: string, resourceType: string, resourceId: string, actionId: string, input: unknown = {}) => request<PluginResourceActionResult>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/actions/${encodeURIComponent(actionId)}`, { method: "POST", body: JSON.stringify(input) }),
   deletePluginResource: (pluginId: string, resourceType: string, resourceId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`, { method: "DELETE" }),
   syncPluginModels: (pluginId: string, providerId: string) => request<{ models: number }>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/sync`, { method: "POST" }),
-  setPluginModelEnabled: (pluginId: string, providerId: string, modelId: string, enabled: boolean) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/enabled`, { method: "PUT", body: JSON.stringify({ modelId, enabled }) }),
+  setPluginModelEnabled: (pluginId: string, providerId: string, modelId: string, enabled: boolean, reasoningEffort?: string | null) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/enabled`, { method: "PUT", body: JSON.stringify({ modelId, enabled, ...(reasoningEffort !== undefined ? { reasoningEffort } : {}) }) }),
   pluginResourceExportUrl: (servicePort: number, pluginId: string, resourceType: string) => `http://127.0.0.1:${servicePort}${API_ROOT}/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/export`,
   removePluginConfiguration: (pluginId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}`, { method: "DELETE" }),
   pluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime"),
@@ -569,7 +586,17 @@ export const api = {
     url.hash = `/calls/${encodeURIComponent(id)}`;
     await request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url: url.toString() }) });
   },
-  openExternalUrl: (url: string) => request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url }) }),
+  openExternalUrl: async (url: string) => {
+    if (typeof window !== "undefined") {
+      try {
+        window.open(url, "_blank");
+      } catch {
+        // ignore
+      }
+    }
+    await request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url }) }).catch(() => undefined);
+  },
+  switchVersion: (version: string) => request<void>("/desktop/switch-version", { method: "POST", body: JSON.stringify({ version }) }),
   observability: () => request<{ detailed: boolean }>("/settings/observability"),
   setObservability: (detailed: boolean) => request<{ detailed: boolean }>("/settings/observability", { method: "PUT", body: JSON.stringify({ detailed }) }),
   ports: () => request<PortSettings>("/settings/ports"),

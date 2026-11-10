@@ -1,0 +1,116 @@
+@use "../../styles/typography" as type;
+
+.content,
+.customFields {
+  display: grid;
+  gap: 14px;
+}
+
+.content {
+  padding: 16px;
+}
+
+.description {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  line-height: 1.5;
+}
+
+.row {
+  min-width: 0;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.control {
+  width: min(320px, 50%);
+}
+
+.value {
+  min-width: 0;
+  max-width: 70%;
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.selectorRow {
+  min-width: 0;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+}
+
+.modelPicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 280px;
+  max-width: 75%;
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: type.$font-size-xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  &[data-tone="ok"] {
+    color: #0f7b41;
+    background: rgb(52 199 123 / 16%);
+    border-color: rgb(52 199 123 / 32%);
+  }
+
+  &[data-tone="muted"] {
+    color: var(--vscode-descriptionForeground);
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  }
+
+  &[data-tone="primary"] {
+    color: var(--vscode-textLink-foreground);
+    background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 24%, transparent);
+  }
+}
+
+.headerAction {
+  padding: 4px;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  border: 0;
+  font-size: type.$font-size-xs;
+
+  &:hover { color: var(--vscode-textLink-activeForeground); }
+  &:disabled { opacity: .5; }
+}
+
+.actionGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 680px) {
+  .control { width: 68%; }
+  .selectorRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .modelPicker {
+    max-width: 100%;
+    justify-content: space-between;
+  }
+}

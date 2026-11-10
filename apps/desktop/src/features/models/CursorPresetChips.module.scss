@@ -32,8 +32,18 @@
   font-size: 12px;
   cursor: pointer;
 
-  &:hover {
-    --liquid-border: var(--vscode-focusBorder, #49b0ff);
+  // 彻底禁用任何悬浮动画、位移与悬浮效果
+  transition: none !important;
+  animation: none !important;
+  transform: none !important;
+
+  &:hover,
+  &:active,
+  &:focus {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
   }
 
   // 玻璃胶囊上浏览器默认的焦点环是一圈生硬的黑色，跟材质完全不搭；

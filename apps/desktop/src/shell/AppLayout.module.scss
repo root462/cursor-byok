@@ -6,7 +6,7 @@
   --app-page-max-width: 1280px;
   --app-page-padding: 18px;
   --app-content-left: calc(var(--app-edge) + var(--app-menu-width) );
-  --app-content-top: calc(var(--window-safe-top) + var(--app-toolbar-height) + 10px );
+  --app-content-top: calc(var(--window-safe-top) + var(--app-toolbar-height) + var(--app-region-gap));
   // 透明：底图铺在 html 上，布局容器不能挡。
   background: transparent;
 }
@@ -62,21 +62,31 @@
     height: 36px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 7px;
     padding: 0 11px;
-    color: inherit;
+    color: color-mix(in srgb, var(--vscode-foreground) 82%, transparent);
     text-decoration: none;
-    border-radius: 6px;
+    border-radius: 8px;
     // 高亮块跟着鼠标走的时候不要硬切。
     transition: background-color 140ms ease, color 140ms ease;
 
     &:hover {
+      color: var(--vscode-foreground);
       background: var(--vscode-list-hoverBackground);
+
+      .menuIcon {
+        color: color-mix(in srgb, var(--vscode-foreground) 88%, transparent);
+      }
     }
 
     &[aria-current="page"] {
       color: var(--vscode-list-activeSelectionForeground);
       background: var(--vscode-list-activeSelectionBackground);
+      font-weight: 500;
+
+      .menuIcon {
+        color: var(--vscode-button-background);
+      }
     }
   }
 
@@ -86,6 +96,15 @@
     background: transparent;
     border: 0;
   }
+}
+
+.menuIcon {
+  color: color-mix(in srgb, var(--vscode-foreground) 56%, transparent);
+  transition: color 140ms ease, transform 140ms ease;
+}
+
+.menuBrandIcon {
+  flex: 0 0 auto;
 }
 
 .menuStatusTag {
@@ -142,13 +161,19 @@
    keyframes 必须写在本模块里：打包时 CSS Modules 会把模块内的动画名一起哈希，
    引用外部全局 @keyframes 时名字对不上，动画会静默失效。 */
 @keyframes pageIn {
-  from {
-    transform: translate3d(0, 12px, 0) scale(0.996);
+  0% {
+    transform: translate3d(0, 16px, 0) scale(0.992);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 .keepAlivePage {
-  animation: pageIn 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  transform-origin: center top;
+  backface-visibility: hidden;
+  will-change: transform;
+  animation: pageIn 360ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -162,7 +187,7 @@
   z-index: 12500;
   top: var(--window-safe-top);
   right: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
-  height: calc(var(--app-content-top) - var(--window-safe-top));
+  height: var(--app-toolbar-height);
   display: flex;
   align-items: center;
   user-select: none;
@@ -198,7 +223,12 @@
   --liquid-min-width: 0;
   --liquid-min-height: 0;
 
-  // 工具条里的图标按钮（刷新 / 添加）做成圆形热区，和条形的圆角走向一致。
+  // 没有子项时隐藏，避免在没有动作按钮的页面留下空泡泡。
+  &:not(:has(.pageActions > *)) {
+    display: none;
+  }
+
+  // 工具条里的图标按钮（添加）做成圆形热区，和条形的圆角走向一致。
   // 只命中直接子元素，避免波及 PageActions 插槽里的文字按钮。
   > button {
     border-radius: 999px;
@@ -212,5 +242,133 @@
 
   &:empty {
     display: none;
+  }
+}
+
+.bottomUpdateCard {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 30%, rgb(255 255 255 / 12%));
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  backdrop-filter: blur(8px);
+  animation: fadeInBottom 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInBottom {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.bottomUpdateHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bottomUpdateDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+  flex-shrink: 0;
+  animation: pulseDot 2s infinite ease-in-out;
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.7;
+  }
+}
+
+.bottomUpdateText {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.bottomUpdateTitle {
+  font-size: type.$font-size-xs;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+}
+
+.bottomUpdateVersion {
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground, #388bfd);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bottomUpdateActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bottomUpdateInstallBtn {
+  flex: 1;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--vscode-button-background, #0078d4);
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, opacity 120ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--vscode-button-hoverBackground, #006cc1);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.bottomUpdateDetailBtn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--vscode-foreground) 80%, transparent);
+  background: color-mix(in srgb, var(--vscode-button-secondaryBackground, #3a3d41) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-widget-border) 40%, transparent);
+  border-radius: 6px;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, color 120ms ease;
+
+  &:hover {
+    color: var(--vscode-foreground);
+    background: var(--vscode-button-secondaryHoverBackground, #45494e);
   }
 }
