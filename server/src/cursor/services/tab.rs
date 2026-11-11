@@ -109,15 +109,13 @@ fn fs_is_enabled_for_user(request: Request<Body>) -> Result<Response<Body>> {
 
     let mut response = Response::new(Body::from(bytes));
     *response.status_mut() = StatusCode::OK;
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(res_ct),
-    );
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(res_ct));
     if request.headers().contains_key("connect-protocol-version") {
-        response.headers_mut().insert(
-            "connect-protocol-version",
-            HeaderValue::from_static("1"),
-        );
+        response
+            .headers_mut()
+            .insert("connect-protocol-version", HeaderValue::from_static("1"));
     }
     tracing::info!("intercepted FSIsEnabledForUser: returned enabled=false to force full contents in StreamCpp");
     Ok(response)

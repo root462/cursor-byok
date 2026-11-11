@@ -450,14 +450,44 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
     Ok((true, &body[5..]))
 }
 
+fn default_context_option<'a>(tokens: Option<u64>, contexts: &'a [(String, String)]) -> &'a str {
+    if let Some(tokens) = tokens {
+        for (value, _) in contexts {
+            if parse_token_count(value) == Some(tokens) || value == &tokens.to_string() {
+                return value.as_str();
+            }
+        }
+    }
+    DEFAULT_CONTEXT
+}
+
+fn default_reasoning_effort(model: &ModelConfig) -> &str {
+    model
+        .configured_reasoning_effort()
+        .map(str::to_ascii_lowercase)
+        .and_then(|effort| {
+            EFFORTS
+                .iter()
+                .find(|(val, _)| *val == effort)
+                .map(|(val, _)| *val)
+        })
+        .unwrap_or("high")
+}
+
 fn available_model(model: &ModelConfig) -> AvailableModel {
     let contexts = context_options(model.context_window_tokens);
+    let default_context = default_context_option(model.context_window_tokens, &contexts);
+    let default_effort = default_reasoning_effort(model);
+    let default_fast = false;
     let tooltip = model_tooltip(model);
     let variants = model_variants(
         &model.model_hash,
         &model.display_name,
         &tooltip,
         &contexts,
+        default_context,
+        default_effort,
+        default_fast,
         true,
     );
     let legacy_slugs = variants
@@ -491,24 +521,8 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
             id: 6,
             display_name: "Cursor".into(),
         }),
-        model_picker_badges: vec![ModelPickerBadge {
-            label: model
-                .group_name
-                .clone()
-                .unwrap_or_else(|| provider_host(&model.base_url)),
-            variant: 1,
-            dismiss_on_selection: false,
-        }],
+        model_picker_badges: Vec::new(),
     }
-}
-
-/// 徽章回退标签:base_url 的主机名。入库时已校验为带主机的 HTTP(S) URL,
-/// 解析失败仅是理论分支,此时原样返回 base_url。
-fn provider_host(base_url: &str) -> String {
-    reqwest::Url::parse(base_url.trim())
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_lowercase))
-        .unwrap_or_else(|| base_url.trim().into())
 }
 
 fn model_parameters(
@@ -584,6 +598,9 @@ fn model_variants(
     display_name: &str,
     tooltip: &TooltipData,
     contexts: &[(String, String)],
+    default_context: &str,
+    default_effort: &str,
+    default_fast: bool,
     thinking: bool,
 ) -> Vec<ModelVariant> {
     // 非思考模型没有 Effort 轴,变体网格只剩 Context × Fast。
@@ -602,6 +619,9 @@ fn model_variants(
     for (context, context_name) in contexts {
         for effort in efforts {
             for fast in [false, true] {
+                let is_default = context == default_context
+                    && fast == default_fast
+                    && effort.is_none_or(|(e, _)| e == default_effort);
                 variants.push(model_variant(
                     name,
                     display_name,
@@ -610,6 +630,7 @@ fn model_variants(
                     context_name,
                     *effort,
                     fast,
+                    is_default,
                 ));
             }
         }
@@ -625,6 +646,7 @@ fn model_variant(
     context_name: &str,
     effort: Option<(&str, &str)>,
     fast: bool,
+    is_default: bool,
 ) -> ModelVariant {
     let mut suffix = Vec::with_capacity(3);
     if context != DEFAULT_CONTEXT {
@@ -644,8 +666,6 @@ fn model_variant(
             "{display_name} <span style=\"color: var(--cursor-text-tertiary);\">{suffix}</span>"
         )
     };
-    let is_default =
-        context == DEFAULT_CONTEXT && !fast && effort.is_none_or(|(effort, _)| effort == "high");
     let mut parameter_values = vec![ModelParameterValue {
         id: "context".into(),
         value: context.into(),
@@ -696,7 +716,16 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     };
     // Effort 与上下文档位由宿主统一提供,与内置模型一致;插件不再声明这两项。
     let contexts = context_options(None);
-    let variants = model_variants(&model.id, &model.display_name, &tooltip, &contexts, true);
+    let variants = model_variants(
+        &model.id,
+        &model.display_name,
+        &tooltip,
+        &contexts,
+        DEFAULT_CONTEXT,
+        "high",
+        false,
+        true,
+    );
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
@@ -728,11 +757,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
             id: 6,
             display_name: model.provider_type.clone(),
         }),
-        model_picker_badges: vec![ModelPickerBadge {
-            label: model.plugin_name.clone(),
-            variant: 1,
-            dismiss_on_selection: false,
-        }],
+        model_picker_badges: Vec::new(),
     }
 }
 
@@ -800,6 +825,45 @@ mod tests {
             created_at_ms: 0,
             updated_at_ms: 0,
         }
+    }
+
+    #[test]
+    fn available_model_uses_configured_effort_context_and_fast() {
+        let mut m = model();
+        m.reasoning_effort = Some("medium".into());
+        m.context_window_tokens = Some(500_000);
+
+        let available = available_model(&m);
+        assert!(available.model_picker_badges.is_empty());
+
+        let default_variants: Vec<_> = available
+            .variants
+            .iter()
+            .filter(|v| v.is_default_non_max_config == Some(true))
+            .collect();
+        assert_eq!(default_variants.len(), 1);
+        let default_v = default_variants[0];
+
+        let context_param = default_v
+            .parameter_values
+            .iter()
+            .find(|p| p.id == "context")
+            .unwrap();
+        assert_eq!(context_param.value, "500k");
+
+        let effort_param = default_v
+            .parameter_values
+            .iter()
+            .find(|p| p.id == "reasoning")
+            .unwrap();
+        assert_eq!(effort_param.value, "medium");
+
+        let fast_param = default_v
+            .parameter_values
+            .iter()
+            .find(|p| p.id == "fast")
+            .unwrap();
+        assert_eq!(fast_param.value, "false");
     }
 
     #[test]

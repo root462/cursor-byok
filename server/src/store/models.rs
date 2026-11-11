@@ -285,7 +285,7 @@ async fn insert_model_with_conflict(
     Ok(result.rows_affected() == 1)
 }
 
-fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
+pub(crate) fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
     Ok(ModelConfig {
         model_hash: row.try_get("model_hash")?,
         sort_order: row.try_get("sort_order")?,
@@ -323,7 +323,7 @@ fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
     })
 }
 
-fn optional_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<u64>> {
+pub(crate) fn optional_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<u64>> {
     row.try_get::<Option<i64>, _>(column)?
         .map(|value| {
             u64::try_from(value).map_err(|_| Error::Config(format!("{column} cannot be negative")))
@@ -331,7 +331,7 @@ fn optional_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<u6
         .transpose()
 }
 
-fn to_i64(value: u64) -> Result<i64> {
+pub(crate) fn to_i64(value: u64) -> Result<i64> {
     i64::try_from(value).map_err(|_| Error::Config("token value is too large".into()))
 }
 

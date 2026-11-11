@@ -82,8 +82,12 @@ async fn setup() -> (
 
 /// Builds the plugin registry the same way `App` does, for routers built outside `setup`.
 fn test_plugins(store: &cursor_server::store::Store) -> PluginRegistry {
-    PluginRegistry::managed(store.clone(), PluginRuntime::managed().unwrap(), "0.1.0".into())
-        .unwrap()
+    PluginRegistry::managed(
+        store.clone(),
+        PluginRuntime::managed().unwrap(),
+        "0.1.0".into(),
+    )
+    .unwrap()
 }
 
 #[tokio::test]
@@ -623,7 +627,12 @@ async fn all_entry_and_upstream_protocol_pairs_preserve_cache_usage() {
         .await
         .unwrap();
     let fake = fake_provider::FakeProvider::default();
-    let inner = byok::router(store.clone(), test_plugins(&store), Arc::new(fake.clone()), None);
+    let inner = byok::router(
+        store.clone(),
+        test_plugins(&store),
+        Arc::new(fake.clone()),
+        None,
+    );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = tokio::spawn(async move { axum::serve(listener, inner).await.unwrap() });

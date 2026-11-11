@@ -3,8 +3,10 @@ import { isTauri } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { api, type DesktopSettings } from "../api";
+import { api, type DesktopSettings, type ReleaseInfo } from "../api";
 import { desktopPlatform } from "./platform";
+
+export type { ReleaseInfo } from "../api";
 
 export function hasNativeAppLifecycle(): boolean {
   return isTauri();
@@ -69,40 +71,8 @@ export async function installUpdate(update: AppUpdate): Promise<void> {
   await update.install();
 }
 
-export type ReleaseInfo = {
-  version: string;
-  tagName: string;
-  name: string;
-  publishedAt: string;
-  body: string;
-  prerelease: boolean;
-};
-
 export async function fetchReleaseHistory(): Promise<ReleaseInfo[]> {
-  const response = await fetch("https://api.github.com/repos/root462/cursor-byok/releases?per_page=30", {
-    headers: { Accept: "application/vnd.github.v3+json" },
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-  const data = (await response.json()) as Array<{
-    tag_name: string;
-    name: string | null;
-    published_at: string;
-    body: string | null;
-    prerelease: boolean;
-    draft: boolean;
-  }>;
-  return data
-    .filter((r) => !r.draft && Boolean(r.tag_name))
-    .map((r) => ({
-      version: r.tag_name.replace(/^v/, ""),
-      tagName: r.tag_name,
-      name: r.name || r.tag_name,
-      publishedAt: r.published_at,
-      body: r.body || "",
-      prerelease: Boolean(r.prerelease),
-    }));
+  return api.releaseHistory();
 }
 
 export async function rollbackToVersion(version: string): Promise<void> {
@@ -120,7 +90,7 @@ export async function rollbackToVersion(version: string): Promise<void> {
  */
 export function describeUpdateError(cause: unknown): string {
   const raw = cause instanceof Error ? cause.message : String(cause);
-  const unreachable = /release JSON|failed to fetch|network|dns|timed? ?out|timeout|connection|connect/i.test(raw);
+  const unreachable = /release JSON|failed to fetch|load failed|network|dns|timed? ?out|timeout|connection|connect/i.test(raw);
   return unreachable
     ? t("无法连接更新服务器，请检查网络或代理后重试")
     : t("检查更新失败：{error}", { error: raw });

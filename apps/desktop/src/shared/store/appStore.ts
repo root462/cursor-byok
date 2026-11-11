@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type CursorHarnessStatus, type CursorRuntimeStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, type ClaudeHarnessStatus, type CodexHarnessStatus, type CursorHarnessStatus, type CursorRuntimeStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, isThemeId, type ThemeId } from "../theme/theme";
 
 export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = {
@@ -21,6 +21,8 @@ export type AppSnapshot = {
   error: string | null;
   theme: ThemeId;
   cursorHarness: CursorHarnessStatus | null;
+  claudeHarness: ClaudeHarnessStatus | null;
+  codexHarness: CodexHarnessStatus | null;
   cursorRuntime: CursorRuntimeStatus | null;
   cursorBusy: boolean;
   pluginRuntime: PluginRuntimeStatus | null;
@@ -63,6 +65,8 @@ let snapshot: AppSnapshot = {
   error: null,
   theme: savedTheme(),
   cursorHarness: null,
+  claudeHarness: null,
+  codexHarness: null,
   cursorRuntime: null,
   cursorBusy: false,
   pluginRuntime: null,
@@ -96,7 +100,7 @@ export const appStore = {
   async refresh() {
     update({ busy: true, error: null });
     try {
-      const [models, calls, overview, settings, ports, pricing, cursorHarness, pluginRuntime, plugins] = await Promise.all([
+      const [models, calls, overview, settings, ports, pricing, cursorHarness, claudeHarness, codexHarness, pluginRuntime, plugins] = await Promise.all([
         api.models(),
         api.calls(),
         api.overview(),
@@ -104,10 +108,12 @@ export const appStore = {
         api.ports(),
         api.pricingSettings(),
         api.cursorHarness(),
+        api.claudeHarness(),
+        api.codexHarness(),
         api.pluginRuntime(),
         api.plugins(),
       ]);
-      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, pluginRuntime, plugins });
+      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, claudeHarness, codexHarness, pluginRuntime, plugins });
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
     } finally {
@@ -202,9 +208,21 @@ export const appStore = {
       return null;
     } finally { update({ cursorBusy: false }); }
   },
-  async setCursorEnabled(enabled: boolean) {
+  async setCursorEnabled(enabled: boolean, terminateProcess?: boolean) {
     update({ cursorBusy: true, error: null });
-    try { update({ cursorHarness: await api.setCursorEnabled(enabled) }); }
+    try { update({ cursorHarness: await api.setCursorEnabled(enabled, terminateProcess) }); }
+    catch (cause) { update({ error: cause instanceof Error ? cause.message : String(cause) }); }
+    finally { update({ cursorBusy: false }); }
+  },
+  async setClaudeEnabled(enabled: boolean) {
+    update({ cursorBusy: true, error: null });
+    try { update({ claudeHarness: await api.setClaudeEnabled(enabled) }); }
+    catch (cause) { update({ error: cause instanceof Error ? cause.message : String(cause) }); }
+    finally { update({ cursorBusy: false }); }
+  },
+  async setCodexEnabled(enabled: boolean, terminateProcess?: boolean) {
+    update({ cursorBusy: true, error: null });
+    try { update({ codexHarness: await api.setCodexEnabled(enabled, terminateProcess) }); }
     catch (cause) { update({ error: cause instanceof Error ? cause.message : String(cause) }); }
     finally { update({ cursorBusy: false }); }
   },

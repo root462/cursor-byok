@@ -161,7 +161,7 @@ impl Output {
     }
 }
 
-pub(super) async fn complete(
+pub(crate) async fn complete(
     protocol: Protocol,
     mut stream: ProviderStream,
     id: &str,
@@ -186,7 +186,7 @@ impl Drop for CancelOnDrop {
     }
 }
 
-pub(super) fn streamed(
+pub(crate) fn streamed(
     protocol: Protocol,
     mut provider: ProviderStream,
     cancellation: CancellationToken,
@@ -315,35 +315,42 @@ fn stream_events(
         Protocol::Responses => match event {
             ModelEvent::TextStart if !*text_started => {
                 *text_started = true;
+                let item_id = format!("msg_{id}");
                 vec![
                     (
                         "response.output_item.added",
-                        json!({"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":format!("msg_{id}"),"status":"in_progress","role":"assistant","content":[]}}),
+                        json!({"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":item_id,"status":"in_progress","role":"assistant","content":[]}}),
                     ),
                     (
                         "response.content_part.added",
-                        json!({"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}),
+                        json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}),
                     ),
                 ]
             }
-            ModelEvent::TextDelta(delta) => vec![(
-                "response.output_text.delta",
-                json!({"type":"response.output_text.delta","delta":delta,"output_index":0,"content_index":0}),
-            )],
-            ModelEvent::TextEnd if *text_started => vec![
-                (
-                    "response.output_text.done",
-                    json!({"type":"response.output_text.done","text":output.text,"output_index":0,"content_index":0}),
-                ),
-                (
-                    "response.content_part.done",
-                    json!({"type":"response.content_part.done","output_index":0,"content_index":0,"part":{"type":"output_text","text":output.text,"annotations":[]}}),
-                ),
-                (
-                    "response.output_item.done",
-                    json!({"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":format!("msg_{id}"),"status":"completed","role":"assistant","content":[{"type":"output_text","text":output.text,"annotations":[]}]}}),
-                ),
-            ],
+            ModelEvent::TextDelta(delta) => {
+                let item_id = format!("msg_{id}");
+                vec![(
+                    "response.output_text.delta",
+                    json!({"type":"response.output_text.delta","item_id":item_id,"delta":delta,"output_index":0,"content_index":0}),
+                )]
+            }
+            ModelEvent::TextEnd if *text_started => {
+                let item_id = format!("msg_{id}");
+                vec![
+                    (
+                        "response.output_text.done",
+                        json!({"type":"response.output_text.done","item_id":item_id,"text":output.text,"output_index":0,"content_index":0}),
+                    ),
+                    (
+                        "response.content_part.done",
+                        json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":output.text,"annotations":[]}}),
+                    ),
+                    (
+                        "response.output_item.done",
+                        json!({"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":item_id,"status":"completed","role":"assistant","content":[{"type":"output_text","text":output.text,"annotations":[]}]}}),
+                    ),
+                ]
+            }
             ModelEvent::ToolCallStart {
                 index,
                 call_id,
@@ -352,22 +359,27 @@ fn stream_events(
                 "response.output_item.added",
                 json!({"type":"response.output_item.added","output_index":index + usize::from(*text_started),"item":{"type":"function_call","id":format!("fc_{call_id}"),"call_id":call_id,"name":name,"arguments":"","status":"in_progress"}}),
             )],
-            ModelEvent::ToolCallArgumentsDelta { index, delta } => vec![(
-                "response.function_call_arguments.delta",
-                json!({"type":"response.function_call_arguments.delta","output_index":index + usize::from(*text_started),"delta":delta}),
-            )],
+            ModelEvent::ToolCallArgumentsDelta { index, delta } => {
+                let tool = output.tools.get(index);
+                let call_id = tool.map(|tool| tool.id.as_str()).unwrap_or_default();
+                vec![(
+                    "response.function_call_arguments.delta",
+                    json!({"type":"response.function_call_arguments.delta","item_id":format!("fc_{call_id}"),"output_index":index + usize::from(*text_started),"delta":delta}),
+                )]
+            }
             ModelEvent::ToolCallEnd { index } => {
                 let tool = output.tools.get(index);
                 let arguments = tool.map(|tool| tool.arguments.as_str()).unwrap_or_default();
                 let call_id = tool.map(|tool| tool.id.as_str()).unwrap_or_default();
+                let item_id = format!("fc_{call_id}");
                 vec![
                     (
                         "response.function_call_arguments.done",
-                        json!({"type":"response.function_call_arguments.done","output_index":index + usize::from(*text_started),"arguments":arguments}),
+                        json!({"type":"response.function_call_arguments.done","item_id":item_id,"output_index":index + usize::from(*text_started),"arguments":arguments}),
                     ),
                     (
                         "response.output_item.done",
-                        json!({"type":"response.output_item.done","output_index":index + usize::from(*text_started),"item":{"type":"function_call","id":format!("fc_{call_id}"),"call_id":call_id,"name":tool.map(|tool| tool.name.as_str()).unwrap_or("tool"),"arguments":arguments,"status":"completed"}}),
+                        json!({"type":"response.output_item.done","output_index":index + usize::from(*text_started),"item":{"type":"function_call","id":item_id,"call_id":call_id,"name":tool.map(|tool| tool.name.as_str()).unwrap_or("tool"),"arguments":arguments,"status":"completed"}}),
                     ),
                 ]
             }

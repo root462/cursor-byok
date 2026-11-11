@@ -10,7 +10,6 @@ use std::{
 };
 
 use serde::Serialize;
-use tokio::process::Command;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -110,15 +109,13 @@ fn inspect_root(root: &Path) -> Option<Located> {
         .get("version")
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned);
-    let build = ["distro", "commit", "quality"]
-        .iter()
-        .find_map(|key| {
-            parsed
-                .get(*key)
-                .and_then(serde_json::Value::as_str)
-                .filter(|value| !value.is_empty())
-                .map(str::to_owned)
-        });
+    let build = ["distro", "commit", "quality"].iter().find_map(|key| {
+        parsed
+            .get(*key)
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    });
     Some(Located {
         root: root.to_path_buf(),
         version,
@@ -192,7 +189,13 @@ fn installation_roots() -> Vec<PathBuf> {
 
 fn launcher_names() -> &'static [&'static str] {
     if cfg!(windows) {
-        &["Cursor.exe", "cursor.exe", "cursor.cmd", "cursor.bat", "cursor"]
+        &[
+            "Cursor.exe",
+            "cursor.exe",
+            "cursor.cmd",
+            "cursor.bat",
+            "cursor",
+        ]
     } else {
         &["cursor", "Cursor"]
     }
@@ -274,32 +277,7 @@ fn probe_launcher(launcher: &Path) -> Option<Located> {
 }
 
 async fn is_running() -> bool {
-    #[cfg(windows)]
-    {
-        let mut command = Command::new("tasklist");
-        command.creation_flags(CREATE_NO_WINDOW);
-        let output = command
-            .args(["/FI", "IMAGENAME eq Cursor.exe", "/NH", "/FO", "CSV"])
-            .output()
-            .await;
-        matches!(output, Ok(output) if output.status.success()
-            && String::from_utf8_lossy(&output.stdout).to_ascii_lowercase().contains("cursor.exe"))
-    }
-    #[cfg(not(windows))]
-    {
-        for name in ["Cursor", "cursor"] {
-            let found = Command::new("pgrep")
-                .args(["-x", name])
-                .output()
-                .await
-                .map(|output| output.status.success())
-                .unwrap_or(false);
-            if found {
-                return true;
-            }
-        }
-        false
-    }
+    super::process::is_cursor_running().await
 }
 
 #[cfg(test)]

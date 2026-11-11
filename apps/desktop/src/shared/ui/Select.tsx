@@ -108,7 +108,20 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     if (!open || !root.current || !menu.current) return;
     return autoUpdate(root.current, menu.current, () => void computePosition(root.current!, menu.current!, {
       placement: "bottom-start",
-      middleware: [offset(6), flip({ padding: 12 }), shift({ padding: 12 }), size({ padding: 12, apply: ({ rects, availableHeight }) => setPosition((current) => ({ ...current, width: rects.reference.width, maxHeight: Math.max(160, availableHeight) })) })],
+      middleware: [
+        offset(6),
+        flip({ padding: 12 }),
+        shift({ padding: 12 }),
+        size({
+          padding: 12,
+          apply: ({ rects, availableHeight, availableWidth }) =>
+            setPosition((current) => ({
+              ...current,
+              width: Math.min(Math.max(rects.reference.width, 360), Math.max(rects.reference.width, availableWidth)),
+              maxHeight: Math.max(160, availableHeight),
+            })),
+        }),
+      ],
     }).then(({ x, y }) => setPosition((current) => ({ ...current, left: x, top: y }))));
   }, [open, filtered.length]);
 
@@ -150,7 +163,22 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     <button type="button" className={styles.comboToggle} disabled={disabled} aria-label={t("打开模型列表")} aria-expanded={open} tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (open) setOpen(false); else { openMenu(); input.current?.focus(); } }}><Icon icon={chevronDownIcon} size="1.1em" className={[styles.dropdownIcon, open && styles.dropdownIconOpen].filter(Boolean).join(" ")} /></button>
     {open && createPortal(<div id={menuId} ref={menu} className={styles.menu} role="listbox" style={{ left: position.left, top: position.top, width: position.width }}>
       <VirtualList items={filtered} itemKey={(option) => option} estimatedItemHeight={30} onReady={(api) => { listApi.current = api; if (active >= 0) api.scrollToIndex(active); }} style={{ height: Math.min(filtered.length * 30, Math.max(30, position.maxHeight - 8)) }}>
-        {(option, index) => <button type="button" role="option" aria-selected={option === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{labelOf(option)}</button>}
+        {(option, index) => (
+          <button
+            type="button"
+            role="option"
+            title={labelOf(option)}
+            aria-selected={option === value}
+            data-active={index === active || undefined}
+            onMouseEnter={() => setActive(index)}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => choose(option)}
+          >
+            <span className={styles.optionContent}>
+              <span>{labelOf(option)}</span>
+            </span>
+          </button>
+        )}
       </VirtualList>
     </div>, document.body)}
   </div>{append}</div>;

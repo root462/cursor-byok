@@ -107,11 +107,9 @@ impl App {
     pub async fn bind(&self) -> Result<TcpListener> {
         let requested = self.config.listen_addr;
         let listener = bind_service_listener(requested, self.config.use_persisted_ports).await?;
-        if self.config.use_persisted_ports {
-            self.store
-                .set_service_port(listener.local_addr()?.port())
-                .await?;
-        }
+        self.store
+            .set_service_port(listener.local_addr()?.port())
+            .await?;
         Ok(listener)
     }
 

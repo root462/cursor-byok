@@ -96,3 +96,64 @@ pub async fn preview_v0049(
 ) -> Result<Json<LegacyModelImportPreview>> {
     Ok(Json(service.preview_v0049_models().await?))
 }
+
+pub async fn list_client(
+    Path(client): Path<String>,
+    State(service): State<ControlService>,
+) -> Result<Json<Vec<ModelConfig>>> {
+    Ok(Json(service.client_models(&client).await?))
+}
+
+pub async fn create_client(
+    Path(client): Path<String>,
+    State(service): State<ControlService>,
+    Json(input): Json<SaveModels>,
+) -> Result<(StatusCode, Json<Vec<ModelConfig>>)> {
+    Ok((
+        StatusCode::CREATED,
+        Json(service.create_client_models(&client, &input.models).await?),
+    ))
+}
+
+pub async fn reorder_client(
+    Path(client): Path<String>,
+    State(service): State<ControlService>,
+    Json(input): Json<ModelOrder>,
+) -> Result<Json<Vec<ModelConfig>>> {
+    Ok(Json(
+        service
+            .reorder_client_models(&client, &input.model_hashes)
+            .await?,
+    ))
+}
+
+pub async fn remove_client(
+    Path((client, model_hash)): Path<(String, String)>,
+    State(service): State<ControlService>,
+) -> Result<StatusCode> {
+    service.delete_client_model(&client, &model_hash).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn update_client(
+    Path((client, model_hash)): Path<(String, String)>,
+    State(service): State<ControlService>,
+    Json(input): Json<ModelConfigInput>,
+) -> Result<Json<ModelConfig>> {
+    Ok(Json(
+        service
+            .update_client_model(&client, &model_hash, &input)
+            .await?,
+    ))
+}
+
+pub async fn test_client(
+    Path((client, model_hash, test_id)): Path<(String, String, String)>,
+    State(service): State<ControlService>,
+) -> Result<Json<ModelConnectivityResult>> {
+    Ok(Json(
+        service
+            .test_client_model(&client, &model_hash, &test_id)
+            .await?,
+    ))
+}
