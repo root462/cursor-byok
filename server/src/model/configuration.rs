@@ -122,6 +122,20 @@ pub struct ModelConfigInput {
     pub thinking_budget_tokens: Option<u64>,
 }
 
+impl ModelConfigInput {
+    pub fn configured_reasoning_effort(&self) -> Option<&str> {
+        match self.model_type {
+            ModelType::Anthropic => self
+                .anthropic_thinking_effort
+                .as_deref()
+                .or(self.reasoning_effort.as_deref()),
+            ModelType::OpenAi => self.reasoning_effort.as_deref(),
+        }
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ModelConfig {
     pub model_hash: String,
@@ -189,6 +203,18 @@ impl ModelConfig {
         }
     }
 
+    pub fn configured_reasoning_effort(&self) -> Option<&str> {
+        match self.model_type {
+            ModelType::Anthropic => self
+                .anthropic_thinking_effort
+                .as_deref()
+                .or(self.reasoning_effort.as_deref()),
+            ModelType::OpenAi => self.reasoning_effort.as_deref(),
+        }
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    }
+
     pub fn configure(&self, model: &mut super::ModelSpec) {
         model.display_name = Some(self.display_name.clone());
         // A request-selected context is authoritative.  Use the saved model
@@ -197,10 +223,7 @@ impl ModelConfig {
             model.context_window_tokens = self.context_window_tokens;
         }
         if model.reasoning.effort.is_none() {
-            model.reasoning.effort = match self.model_type {
-                ModelType::OpenAi => self.reasoning_effort.clone(),
-                ModelType::Anthropic => self.anthropic_thinking_effort.clone(),
-            };
+            model.reasoning.effort = self.configured_reasoning_effort().map(str::to_owned);
         }
         model.reasoning.enabled |= model.reasoning.effort.is_some();
     }
@@ -290,6 +313,7 @@ pub fn model_hash(input: &ModelConfigInput) -> Result<String> {
         &normalized.openai_endpoint,
         normalized.use_full_url,
     )?;
+    let effort = normalized.configured_reasoning_effort().map(str::to_owned);
     let mut parts = vec![
         request_url,
         normalized.model_id,
@@ -298,6 +322,12 @@ pub fn model_hash(input: &ModelConfigInput) -> Result<String> {
     ];
     if normalized.model_type == ModelType::OpenAi {
         parts.push(normalized.openai_endpoint);
+    }
+    if let Some(effort) = effort {
+        parts.push(effort);
+    }
+    if let Some(tokens) = normalized.context_window_tokens {
+        parts.push(tokens.to_string());
     }
     let digest = Sha256::digest(parts.join("\n").as_bytes());
     Ok(hex::encode(&digest[..8]))
@@ -475,5 +505,48 @@ impl ModelSpec {
             supports_image_generation: false,
             extra_params: serde_json::json!({}),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_hash_changes_when_reasoning_effort_changes() {
+        let mut input = ModelConfigInput {
+            sort_order: 1,
+            display_name: "DeepSeek".into(),
+            group_name: None,
+            model_type: ModelType::OpenAi,
+            base_url: "https://api.deepseek.com".into(),
+            use_full_url: false,
+            api_key: "key".into(),
+            tooltip_data: "tip".into(),
+            model_id: "deepseek-reasoner".into(),
+            reasoning_effort: Some("medium".into()),
+            openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: empty_object(),
+            custom_headers_enabled: false,
+            custom_headers: empty_object(),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: empty_object(),
+            context_window_tokens: None,
+            max_completion_tokens: None,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+        };
+
+        let hash_medium = model_hash(&input).unwrap();
+
+        input.reasoning_effort = Some("high".into());
+        let hash_high = model_hash(&input).unwrap();
+        assert_ne!(hash_medium, hash_high);
+
+        input.context_window_tokens = Some(1_000_000);
+        let hash_ctx = model_hash(&input).unwrap();
+        assert_ne!(hash_high, hash_ctx);
     }
 }

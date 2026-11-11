@@ -98,8 +98,9 @@ pub async fn stream_cpp(
         Some(ref request) => {
             let line_1_indexed = (request.line + 1) as i32;
             let (prefix, _) = split_at_cursor(request);
-            let current_line_prefix =
-                prefix.rsplit_once('\n').map_or(prefix.as_str(), |(_, line)| line);
+            let current_line_prefix = prefix
+                .rsplit_once('\n')
+                .map_or(prefix.as_str(), |(_, line)| line);
             let current_line_prefix = current_line_prefix.trim_end_matches('\r');
             match complete(registry, settings, request, budget).await {
                 Ok(text) => {
@@ -137,7 +138,10 @@ pub async fn stream_cpp(
     // 4. EndStream frame
     let mut frames = Vec::new();
     frames.extend_from_slice(&frame(&encode_model_info()));
-    frames.extend_from_slice(&frame(&encode_range_to_replace(line_1_indexed, line_1_indexed)));
+    frames.extend_from_slice(&frame(&encode_range_to_replace(
+        line_1_indexed,
+        line_1_indexed,
+    )));
     frames.extend_from_slice(&frame(&encode_text_and_done(&completion, true)));
     frames.extend_from_slice(&connect::encode_end_stream());
     Ok(Response::builder()
@@ -291,7 +295,9 @@ fn extract_payload(body: &[u8]) -> Result<Vec<u8>> {
                 if flags & connect::END_STREAM_FLAG != 0 {
                     continue;
                 }
-                if flags & 0x01 != 0 || (payload.len() >= 2 && payload[0] == 0x1f && payload[1] == 0x8b) {
+                if flags & 0x01 != 0
+                    || (payload.len() >= 2 && payload[0] == 0x1f && payload[1] == 0x8b)
+                {
                     return decompress_gzip(&payload);
                 }
                 return Ok(payload.to_vec());
@@ -307,9 +313,9 @@ fn extract_payload(body: &[u8]) -> Result<Vec<u8>> {
 fn decompress_gzip(data: &[u8]) -> Result<Vec<u8>> {
     let mut decoder = GzDecoder::new(data);
     let mut decompressed = Vec::new();
-    decoder
-        .read_to_end(&mut decompressed)
-        .map_err(|error| Error::Protocol(format!("cannot decompress StreamCpp payload: {error}")))?;
+    decoder.read_to_end(&mut decompressed).map_err(|error| {
+        Error::Protocol(format!("cannot decompress StreamCpp payload: {error}"))
+    })?;
     Ok(decompressed)
 }
 

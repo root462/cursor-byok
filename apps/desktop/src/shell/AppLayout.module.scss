@@ -60,6 +60,7 @@
   button {
     width: 100%;
     height: 36px;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 7px;
@@ -98,6 +99,48 @@
   }
 }
 
+.menuLabelContainer {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  position: relative;
+
+  &[data-scrolling] {
+    mask-image: linear-gradient(to right, transparent 0, black 6px, black calc(100% - 6px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 6px, black calc(100% - 6px), transparent 100%);
+  }
+}
+
+.menuLabelText {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.menuLabelMarquee {
+  text-overflow: clip;
+  animation: menuMarquee 3s ease-in-out infinite alternate;
+}
+
+@keyframes menuMarquee {
+  0%, 25% {
+    transform: translateX(0);
+  }
+  75%, 100% {
+    transform: translateX(var(--marquee-offset, 0));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menuLabelMarquee {
+    animation: none;
+  }
+}
+
 .menuIcon {
   color: color-mix(in srgb, var(--vscode-foreground) 56%, transparent);
   transition: color 140ms ease, transform 140ms ease;
@@ -117,6 +160,7 @@
   border-radius: 999px;
   font-size: type.$font-size-2xs;
   line-height: 1.4;
+  white-space: nowrap;
 
   &[data-taken] {
     color: var(--vscode-testing-iconPassed, #73c991);

@@ -2,6 +2,8 @@
 mod account;
 mod app_info;
 mod ca;
+pub mod claude;
+pub mod codex;
 mod process;
 mod proxy;
 mod settings;
@@ -20,6 +22,9 @@ use crate::{
 use self::{ca::CaManager, proxy::ProxyRuntime};
 
 pub use app_info::{detect_cursor_app, CursorAppInfo};
+pub use claude::{ClaudeHarness, ClaudeHarnessStatus};
+pub use codex::{CodexHarness, CodexHarnessStatus};
+pub use process::{is_codex_running, is_cursor_running, terminate_codex, terminate_cursor};
 
 pub(crate) fn proxy_host_allowed(host: &str) -> bool {
     proxy::is_cursor_host(host)
@@ -69,6 +74,8 @@ pub struct CursorHarnessStatus {
 #[derive(Clone, Copy, Debug, Deserialize)]
 pub struct SetEnabled {
     pub enabled: bool,
+    #[serde(default)]
+    pub terminate_process: bool,
 }
 
 #[derive(Clone)]
@@ -155,13 +162,22 @@ impl CursorHarness {
         self.status().await
     }
 
-    pub async fn set_enabled(&self, enabled: bool) -> Result<CursorHarnessStatus> {
+    pub async fn set_enabled(
+        &self,
+        enabled: bool,
+        terminate_process: bool,
+    ) -> Result<CursorHarnessStatus> {
         if enabled {
             self.inner.store.set_cursor_takeover_enabled(true).await?;
             self.enable().await?;
         } else {
             self.inner.store.set_cursor_takeover_enabled(false).await?;
             self.disable().await?;
+            if terminate_process {
+                if let Err(error) = process::terminate_cursor().await {
+                    tracing::warn!(%error, "failed to terminate Cursor after disabling takeover");
+                }
+            }
         }
         self.status().await
     }

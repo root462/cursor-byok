@@ -78,7 +78,11 @@ impl Provider for ProviderRouter {
                     (recorder, guard, provider.stream(routed, cancellation.clone()))
                 } else {
                     let mut routed = invocation.clone();
-                    let model = store.model(&selected).await?.ok_or_else(|| Error::Provider(format!("unknown model: {selected}")))?;
+                    let model = match store.model(&selected).await? {
+                        Some(model) => Some(model),
+                        None => store.any_client_model(&selected).await?,
+                    }
+                    .ok_or_else(|| Error::Provider(format!("unknown model: {selected}")))?;
                     let provider_type = model.provider_type();
                     let request_url = model.request_url()?;
                     model.configure(&mut routed.request.model);

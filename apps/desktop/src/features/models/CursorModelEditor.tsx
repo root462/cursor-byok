@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { ModelInput, ModelType } from "../../shared/api";
 import { defaultCustomHeadersText } from "../../shared/utils/modelDefaults";
 import { modelPresets, presetEndpoint, trimTrailingSlash, type ModelPreset } from "../../shared/utils/modelPresets";
@@ -56,12 +56,13 @@ export const emptyCursorModelDraft = (): CursorModelDraft => ({
   anthropicExtraParamsText: "{}",
 });
 
-export function CursorModelEditor({ draft, modelOptions, discovering, zcodePluginReady, opencodePluginReady, onChange, onDiscover }: {
+export function CursorModelEditor({ draft, modelOptions, discovering, zcodePluginReady, opencodePluginReady, target = "cursor", onChange, onDiscover }: {
   draft: CursorModelDraft;
   modelOptions: string[];
   discovering: boolean;
   zcodePluginReady: boolean;
   opencodePluginReady?: boolean;
+  target?: "cursor" | "claude" | "codex";
   onChange: (draft: CursorModelDraft) => void;
   onDiscover: () => Promise<boolean>;
 }) {
@@ -148,6 +149,39 @@ export function CursorModelEditor({ draft, modelOptions, discovering, zcodePlugi
     if (providerId === "builtin/anthropic") setType("anthropic");
   };
 
+  const [customContext, setCustomContext] = useState(false);
+  const isCustomContext = customContext || (
+    draft.model.context_window_tokens !== null &&
+    ![200_000, 356_000, 500_000, 800_000, 1_000_000].includes(draft.model.context_window_tokens)
+  );
+  const contextSelectValue = isCustomContext
+    ? "custom"
+    : draft.model.context_window_tokens === null
+      ? ""
+      : String(draft.model.context_window_tokens);
+
+  const handleContextSelectChange = (value: string) => {
+    if (value === "custom") {
+      setCustomContext(true);
+    } else if (value === "") {
+      setCustomContext(false);
+      setModel({ context_window_tokens: null });
+    } else {
+      setCustomContext(false);
+      setModel({ context_window_tokens: Number(value) });
+    }
+  };
+
+  const contextOptions = [
+    { value: "", label: t("默认 (200K)") },
+    { value: "200000", label: "200K" },
+    { value: "356000", label: "356K" },
+    { value: "500000", label: "500K" },
+    { value: "800000", label: "800K" },
+    { value: "1000000", label: "1M" },
+    { value: "custom", label: t("自定义 Token 数…") },
+  ];
+
   return <div className={styles.editor}>
     <CursorPresetChips type={draft.model.type} baseUrl={draft.model.base_url} onPick={applyPreset} />
     <div className={styles.grid}>
@@ -165,9 +199,26 @@ export function CursorModelEditor({ draft, modelOptions, discovering, zcodePlugi
 
       <FormField label={t("模型名称")} hint={t("可以直接输入模型标识，也可以读取接口返回的模型列表。")}><Combobox ref={modelCombobox} value={draft.model.model_id} options={combinedOptions} placeholder="gpt-5" append={<Button className={styles.discoverButton} disabled={discovering || !canDiscover} onClick={() => void discoverModels()}>{discovering ? t("获取中…") : t("获取模型")}</Button>} onChange={(model_id) => setModel({ model_id, display_name: draft.model.display_name || model_id })} /></FormField>
       <FormField label={t("显示名称")} hint={t("仅用于界面展示，不会改变发送给模型服务的模型名称。")}> <TextInput placeholder={t("例如：主力模型")} value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>
-      <FormField className={styles.fullWidth} label={t("备注")} hint={t("显示在 Cursor 模型标签和说明中，建议不超过 5 个字。")}> <TextInput placeholder={t("请输入模型备注")} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} />{modelNoteTooLong(draft.model.tooltip_data) && <span className={styles.noteWarning} role="status">{t("备注建议不超过 5 个字，以免标签过长。")}</span>}</FormField>
+      <FormField className={styles.fullWidth} label={t("备注")} hint={target === "cursor" ? t("显示在 Cursor 模型标签和说明中，建议不超过 5 个字。") : t("模型备注信息")}> <TextInput placeholder={t("请输入模型备注")} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} />{target === "cursor" && modelNoteTooLong(draft.model.tooltip_data) && <span className={styles.noteWarning} role="status">{t("备注建议不超过 5 个字，以免标签过长。")}</span>}</FormField>
 
-      <FormField label={t("上下文窗口 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.context_window_tokens ?? ""} onChange={(event) => setModel({ context_window_tokens: numberValue(event.target.value) })} /></FormField>
+      <FormField label={t("上下文窗口")} hint={target === "cursor" ? t("对应 Cursor 中的 Context 选项。") : target === "claude" ? t("限制 Claude CLI 会话最大上下文 Token 数。") : t("写入 Codex 模型目录的 context_window。")}>
+        <Select
+          ariaLabel={t("上下文窗口")}
+          value={contextSelectValue}
+          options={contextOptions}
+          onChange={handleContextSelectChange}
+        />
+        {isCustomContext && (
+          <TextInput
+            type="number"
+            min={1}
+            step={1}
+            placeholder={t("输入自定义 Token 数，例如 128000")}
+            value={draft.model.context_window_tokens ?? ""}
+            onChange={(event) => setModel({ context_window_tokens: numberValue(event.target.value) })}
+          />
+        )}
+      </FormField>
       {draft.model.type === "openai" ? <>
         <FormField label={t("最大输出 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.max_completion_tokens ?? ""} onChange={(event) => setModel({ max_completion_tokens: numberValue(event.target.value) })} /></FormField>
         <FormField label={t("推理强度")}> <Select ariaLabel={t("推理强度")} value={draft.model.reasoning_effort ?? ""} options={effortOptions(true)} onChange={(value) => setModel({ reasoning_effort: value || null })} /></FormField>

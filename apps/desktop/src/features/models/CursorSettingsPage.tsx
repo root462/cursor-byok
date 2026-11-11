@@ -115,6 +115,7 @@ export function CursorSettingsPage() {
   const save = async () => {
     try {
       if (await persist()) {
+        message(t("保存成功"));
         setDraft(null);
         setEditing(null);
       }
@@ -255,6 +256,23 @@ export function CursorSettingsPage() {
     }
   }, [message]);
 
+  const handleToggleTakeover = async (enabled: boolean) => {
+    if (enabled) {
+      void appStore.setCursorEnabled(true);
+      return;
+    }
+    try {
+      const { running } = await api.cursorRunning();
+      if (running) {
+        setConfirmDisableTakeover(true);
+        return;
+      }
+    } catch {
+      // ignore check failure
+    }
+    void appStore.setCursorEnabled(false);
+  };
+
   const list = <CursorModelCards
     models={models}
     grouping={grouping}
@@ -304,10 +322,7 @@ export function CursorSettingsPage() {
             checked={cursorTakenOver}
             disabled={cursorBusy || (!cursorTakenOver && !caReady)}
             label={takeoverLabel}
-            onChange={(enabled) => {
-              if (enabled) void appStore.setCursorEnabled(true);
-              else setConfirmDisableTakeover(true);
-            }}
+            onChange={(enabled) => void handleToggleTakeover(enabled)}
           />
         </TooltipTrigger>
         {testTargets.length > 0 && <>
@@ -327,16 +342,16 @@ export function CursorSettingsPage() {
     ]} />
     <ConfirmDialog
       open={confirmDisableTakeover}
-      title={t("关闭接管Cursor？")}
-      cancelLabel={t("取消")}
-      confirmLabel={t("关闭接管")}
+      title={t("关闭接管 Cursor？")}
+      cancelLabel={t("否")}
+      confirmLabel={t("是")}
       onCancel={() => setConfirmDisableTakeover(false)}
       onConfirm={() => {
         setConfirmDisableTakeover(false);
-        void appStore.setCursorEnabled(false);
+        void appStore.setCursorEnabled(false, true);
       }}
     >
-      <p>{t("关闭后将移除 Cursor 本地代理配置。如果你需要登陆官方账号，通常不需要关闭操作，推荐直接登陆你的账号即可(byok模型与官方账号的模型已支持无缝衔接)，是否继续关闭并清理代理？")}</p>
+      <p>{t("检测到 Cursor 正在运行，关闭接管将会退出 Cursor。是否确认关闭接管并退出？")}</p>
     </ConfirmDialog>
     <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editorTesting ? t("取消测试") : t("保存并测试")}</button>}>
       {draft && <>

@@ -126,7 +126,8 @@ pub fn default_model_pricing(model_id: &str) -> Option<ModelPricing> {
             cache_write_per_million: 15.0,
         });
     }
-    if lower.contains("deepseek-reasoner") || lower.contains("deepseek-r1") || lower.contains("r1") {
+    if lower.contains("deepseek-reasoner") || lower.contains("deepseek-r1") || lower.contains("r1")
+    {
         return Some(ModelPricing {
             input_per_million: 0.55,
             output_per_million: 2.19,
@@ -166,7 +167,8 @@ pub fn default_model_pricing(model_id: &str) -> Option<ModelPricing> {
             cache_write_per_million: 1.25,
         });
     }
-    if lower.contains("gpt-4-turbo") || lower.contains("gpt-4-0125") || lower.contains("gpt-4-1106") {
+    if lower.contains("gpt-4-turbo") || lower.contains("gpt-4-0125") || lower.contains("gpt-4-1106")
+    {
         return Some(ModelPricing {
             input_per_million: 10.0,
             output_per_million: 30.0,

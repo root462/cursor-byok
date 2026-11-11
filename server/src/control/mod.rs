@@ -1,5 +1,7 @@
 //! Exposes the local control API.
 mod calls;
+mod claude_proxy;
+mod codex_proxy;
 mod harness;
 mod models;
 mod overview;
@@ -228,6 +230,10 @@ pub fn api_router(service: ControlService) -> Router {
             get(harness::status),
         )
         .route(
+            "/__byok-api__/api/harness/cursor/running",
+            get(harness::cursor_running),
+        )
+        .route(
             "/__byok-api__/api/harness/cursor/app",
             get(harness::app_info),
         )
@@ -239,6 +245,54 @@ pub fn api_router(service: ControlService) -> Router {
             "/__byok-api__/api/harness/cursor/enabled",
             put(harness::set_enabled),
         )
+        .route(
+            "/__byok-api__/api/harness/{client}/models",
+            get(models::list_client).post(models::create_client),
+        )
+        .route(
+            "/__byok-api__/api/harness/{client}/models/order",
+            put(models::reorder_client),
+        )
+        .route(
+            "/__byok-api__/api/harness/{client}/models/{model_hash}",
+            put(models::update_client).delete(models::remove_client),
+        )
+        .route(
+            "/__byok-api__/api/harness/{client}/models/{model_hash}/test/{test_id}",
+            post(models::test_client).delete(models::cancel),
+        )
+        .route(
+            "/__byok-api__/api/harness/claude/status",
+            get(harness::claude_status),
+        )
+        .route(
+            "/__byok-api__/api/harness/claude/enabled",
+            put(harness::set_claude_enabled),
+        )
+        .route(
+            "/__byok-api__/api/harness/codex/status",
+            get(harness::codex_status),
+        )
+        .route(
+            "/__byok-api__/api/harness/codex/running",
+            get(harness::codex_running),
+        )
+        .route(
+            "/__byok-api__/api/harness/codex/enabled",
+            put(harness::set_codex_enabled),
+        )
+        // Claude CLI transparent proxy & protocol translator
+        .route("/claude/v1/messages", post(claude_proxy::messages))
+        .route("/claude/messages", post(claude_proxy::messages))
+        .route("/claude/v1/models", get(claude_proxy::list_models))
+        .route("/claude/models", get(claude_proxy::list_models))
+        // Codex Desktop transparent proxy & protocol router
+        .route("/codex/v1/chat/completions", post(codex_proxy::chat))
+        .route("/codex/chat/completions", post(codex_proxy::chat))
+        .route("/codex/v1/responses", post(codex_proxy::responses))
+        .route("/codex/responses", post(codex_proxy::responses))
+        .route("/codex/v1/models", get(codex_proxy::list_models))
+        .route("/codex/models", get(codex_proxy::list_models))
         .with_state(service)
         .layer(desktop_cors())
 }

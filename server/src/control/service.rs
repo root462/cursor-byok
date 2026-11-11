@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::{
     cursor::services::runtime_compatibility::RuntimeCompatibility,
-    local_app::CursorHarness,
+    local_app::{ClaudeHarness, CodexHarness, CursorHarness},
     model::{
         ContentPart, CursorRunTraceArtifact, CursorRunTraceSummary, LlmCallRequest,
         LlmCallResponseChunk, LlmCallSummary, ModelConfig, ModelConfigInput, ModelInvocation,
@@ -34,6 +34,8 @@ use crate::{
 pub struct ControlService {
     store: Store,
     cursor_harness: CursorHarness,
+    claude_harness: ClaudeHarness,
+    codex_harness: CodexHarness,
     runtime_compatibility: RuntimeCompatibility,
     provider: Arc<dyn Provider>,
     plugin_runtime: PluginRuntime,
@@ -159,8 +161,10 @@ impl ControlService {
         clients: crate::network::NetworkClients,
         runtime_compatibility: RuntimeCompatibility,
     ) -> Result<Self> {
-        Ok(Self {
+        let service = Self {
             cursor_harness: CursorHarness::new(store.clone())?,
+            claude_harness: ClaudeHarness::new(store.clone()),
+            codex_harness: CodexHarness::new(store.clone()),
             runtime_compatibility,
             store,
             provider,
@@ -168,7 +172,16 @@ impl ControlService {
             plugins,
             clients,
             model_tests: Arc::new(Mutex::new(BTreeMap::new())),
-        })
+        };
+
+        let claude = service.claude_harness.clone();
+        let codex = service.codex_harness.clone();
+        tokio::spawn(async move {
+            let _ = claude.sync_if_applied().await;
+            let _ = codex.sync_if_applied().await;
+        });
+
+        Ok(service)
     }
 
     pub fn runtime_compatibility(&self) -> &RuntimeCompatibility {
@@ -177,6 +190,71 @@ impl ControlService {
 
     pub fn cursor_harness(&self) -> &CursorHarness {
         &self.cursor_harness
+    }
+
+    pub fn claude_harness(&self) -> &ClaudeHarness {
+        &self.claude_harness
+    }
+
+    pub fn codex_harness(&self) -> &CodexHarness {
+        &self.codex_harness
+    }
+
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    pub fn provider(&self) -> Arc<dyn Provider> {
+        self.provider.clone()
+    }
+
+    pub async fn client_models(&self, client: &str) -> Result<Vec<ModelConfig>> {
+        self.store.client_models(client).await
+    }
+
+    async fn sync_client_harness(&self, client: &str) {
+        if client == "claude" {
+            let _ = self.claude_harness.sync_if_applied().await;
+        } else if client == "codex" {
+            let _ = self.codex_harness.sync_if_applied().await;
+        }
+    }
+
+    pub async fn create_client_models(
+        &self,
+        client: &str,
+        inputs: &[ModelConfigInput],
+    ) -> Result<Vec<ModelConfig>> {
+        let result = self.store.create_client_models(client, inputs).await?;
+        self.sync_client_harness(client).await;
+        Ok(result)
+    }
+
+    pub async fn update_client_model(
+        &self,
+        client: &str,
+        hash: &str,
+        input: &ModelConfigInput,
+    ) -> Result<ModelConfig> {
+        let result = self.store.update_client_model(client, hash, input).await?;
+        self.sync_client_harness(client).await;
+        Ok(result)
+    }
+
+    pub async fn delete_client_model(&self, client: &str, hash: &str) -> Result<()> {
+        self.store.delete_client_model(client, hash).await?;
+        self.sync_client_harness(client).await;
+        Ok(())
+    }
+
+    pub async fn reorder_client_models(
+        &self,
+        client: &str,
+        hashes: &[String],
+    ) -> Result<Vec<ModelConfig>> {
+        let result = self.store.reorder_client_models(client, hashes).await?;
+        self.sync_client_harness(client).await;
+        Ok(result)
     }
 
     pub async fn plugins(&self) -> Vec<PluginDescriptor> {
@@ -350,6 +428,33 @@ impl ControlService {
         result
     }
 
+    pub async fn test_client_model(
+        &self,
+        client: &str,
+        model_hash: &str,
+        test_id: &str,
+    ) -> Result<ModelConnectivityResult> {
+        let cancellation = CancellationToken::new();
+        let cancellation = {
+            let mut tests = self
+                .model_tests
+                .lock()
+                .expect("model test registry mutex poisoned");
+            tests
+                .entry(test_id.to_owned())
+                .or_insert_with(|| cancellation.clone())
+                .clone()
+        };
+        let result = self
+            .run_client_model_test(client, model_hash, cancellation)
+            .await;
+        self.model_tests
+            .lock()
+            .expect("model test registry mutex poisoned")
+            .remove(test_id);
+        result
+    }
+
     pub fn cancel_model_test(&self, test_id: &str) {
         let cancellation = {
             let mut tests = self
@@ -366,9 +471,6 @@ impl ControlService {
         model_hash: &str,
         cancellation: CancellationToken,
     ) -> Result<ModelConnectivityResult> {
-        const TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
-        const TEST_PROMPT: &str = "Output the numbers 1 through 120 separated by a single space. No commas, no newlines, no explanation.";
-
         let mut model = ModelSpec::new(model_hash);
         if model_hash.starts_with(crate::plugin::ADAPTER_ID_PREFIX) {
             let descriptor = self.plugins.model_descriptor(model_hash).await?;
@@ -383,6 +485,34 @@ impl ControlService {
             configured.configure(&mut model);
             model.max_output_tokens = Some(configured.max_output_tokens().unwrap_or(65_536));
         }
+        self.execute_model_test(model, cancellation).await
+    }
+
+    async fn run_client_model_test(
+        &self,
+        client: &str,
+        model_hash: &str,
+        cancellation: CancellationToken,
+    ) -> Result<ModelConnectivityResult> {
+        let mut model = ModelSpec::new(model_hash);
+        let configured = self
+            .store
+            .client_model(client, model_hash)
+            .await?
+            .ok_or_else(|| Error::RunNotFound(format!("model {model_hash} for client {client}")))?;
+        configured.configure(&mut model);
+        model.max_output_tokens = Some(configured.max_output_tokens().unwrap_or(65_536));
+        self.execute_model_test(model, cancellation).await
+    }
+
+    async fn execute_model_test(
+        &self,
+        model: ModelSpec,
+        cancellation: CancellationToken,
+    ) -> Result<ModelConnectivityResult> {
+        const TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+        const TEST_PROMPT: &str = "Output the numbers 1 through 120 separated by a single space. No commas, no newlines, no explanation.";
+
         let call_id = format!("model-test-{}", uuid::Uuid::new_v4());
         let invocation = ModelInvocation {
             call_id: call_id.clone(),

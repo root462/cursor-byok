@@ -10,7 +10,7 @@ use std::{
 use axum::{
     extract::{Extension, Json},
     http::StatusCode,
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use tauri::{
@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 #[cfg(dev)]
 use cursor_server::config::ConsoleSource;
-use cursor_server::{App, Config, Result};
+use cursor_server::{reqwest, store::Store, App, Config, Result};
 
 #[cfg(not(dev))]
 use crate::frontend;
@@ -129,8 +129,12 @@ async fn switch_version_handler(
     let endpoint_str = format!(
         "https://github.com/root462/cursor-byok/releases/download/v{clean_version}/latest.json"
     );
-    let target_url = url::Url::parse(&endpoint_str)
-        .map_err(|error| (StatusCode::BAD_REQUEST, format!("invalid endpoint URL: {error}")))?;
+    let target_url = url::Url::parse(&endpoint_str).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid endpoint URL: {error}"),
+        )
+    })?;
 
     let updater = app
         .updater_builder()
@@ -177,7 +181,185 @@ async fn switch_version_handler(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn desktop_api_router(app: AppHandle) -> Router {
+#[derive(serde::Serialize)]
+struct ReleaseInfoResponse {
+    version: String,
+    #[serde(rename = "tagName")]
+    tag_name: String,
+    name: String,
+    #[serde(rename = "publishedAt")]
+    published_at: String,
+    body: String,
+    prerelease: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct GitHubReleaseItem {
+    tag_name: Option<String>,
+    name: Option<String>,
+    published_at: Option<String>,
+    body: Option<String>,
+    #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
+    draft: bool,
+}
+
+fn strip_html_and_unescape(input: &str) -> String {
+    let unescaped = input
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'");
+
+    let mut result = String::with_capacity(unescaped.len());
+    let mut in_tag = false;
+    for c in unescaped.chars() {
+        if c == '<' {
+            in_tag = true;
+        } else if c == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            result.push(c);
+        }
+    }
+    result.trim().to_string()
+}
+
+fn parse_atom_releases(xml: &str) -> Vec<ReleaseInfoResponse> {
+    let mut releases = Vec::new();
+    for block in xml.split("<entry>").skip(1) {
+        let entry_content = match block.split("</entry>").next() {
+            Some(c) => c,
+            None => continue,
+        };
+        let tag = entry_content
+            .split("/tag/")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .unwrap_or("")
+            .trim();
+        if tag.is_empty() {
+            continue;
+        }
+
+        let title = entry_content
+            .split("<title>")
+            .nth(1)
+            .and_then(|s| s.split("</title>").next())
+            .unwrap_or(tag)
+            .trim();
+
+        let updated = entry_content
+            .split("<updated>")
+            .nth(1)
+            .and_then(|s| s.split("</updated>").next())
+            .unwrap_or("")
+            .trim();
+
+        let body = entry_content
+            .split("<content")
+            .nth(1)
+            .and_then(|s| s.split_once('>'))
+            .map(|(_, after_gt)| {
+                let text = after_gt.split("</content>").next().unwrap_or("");
+                strip_html_and_unescape(text)
+            })
+            .unwrap_or_default();
+
+        let version = tag.trim_start_matches('v').to_string();
+        releases.push(ReleaseInfoResponse {
+            version,
+            tag_name: tag.to_string(),
+            name: title.to_string(),
+            published_at: updated.to_string(),
+            body,
+            prerelease: false,
+        });
+    }
+    releases
+}
+
+async fn fetch_releases_from_atom(
+    client: &reqwest::Client,
+) -> std::result::Result<Vec<ReleaseInfoResponse>, String> {
+    let response = client
+        .get("https://github.com/root462/cursor-byok/releases.atom")
+        .header(reqwest::header::USER_AGENT, "Cursor-BYOK-Desktop")
+        .send()
+        .await
+        .map_err(|e| format!("atom feed fetch error: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("atom feed returned HTTP {}", response.status()));
+    }
+
+    let xml = response
+        .text()
+        .await
+        .map_err(|e| format!("atom feed read error: {e}"))?;
+
+    let releases = parse_atom_releases(&xml);
+    if releases.is_empty() {
+        return Err("atom feed contained no valid release entries".into());
+    }
+    Ok(releases)
+}
+
+async fn release_history_handler(
+    Extension(store): Extension<Store>,
+) -> std::result::Result<Json<Vec<ReleaseInfoResponse>>, (StatusCode, String)> {
+    let client = cursor_server::network::client(&store)
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+
+    // Try GitHub REST API first
+    let rest_result = client
+        .get("https://api.github.com/repos/root462/cursor-byok/releases?per_page=30")
+        .header(reqwest::header::ACCEPT, "application/vnd.github.v3+json")
+        .header(reqwest::header::USER_AGENT, "Cursor-BYOK-Desktop")
+        .send()
+        .await;
+
+    if let Ok(response) = rest_result {
+        if response.status().is_success() {
+            if let Ok(items) = response.json::<Vec<GitHubReleaseItem>>().await {
+                let releases: Vec<ReleaseInfoResponse> = items
+                    .into_iter()
+                    .filter(|r| !r.draft && r.tag_name.as_ref().is_some_and(|t| !t.is_empty()))
+                    .map(|r| {
+                        let tag = r.tag_name.unwrap_or_default();
+                        let version = tag.trim_start_matches('v').to_string();
+                        let name = r.name.unwrap_or_else(|| tag.clone());
+                        ReleaseInfoResponse {
+                            version,
+                            tag_name: tag,
+                            name,
+                            published_at: r.published_at.unwrap_or_default(),
+                            body: r.body.unwrap_or_default(),
+                            prerelease: r.prerelease,
+                        }
+                    })
+                    .collect();
+                if !releases.is_empty() {
+                    return Ok(Json(releases));
+                }
+            }
+        }
+    }
+
+    // Fallback to releases.atom when REST API is rate-limited (403), blocked, or errors out
+    match fetch_releases_from_atom(&client).await {
+        Ok(releases) => Ok(Json(releases)),
+        Err(error) => Err((
+            StatusCode::BAD_GATEWAY,
+            format!("failed to fetch releases: {error}"),
+        )),
+    }
+}
+
+fn desktop_api_router(app: AppHandle, store: Store) -> Router {
     Router::new()
         .route(
             "/__byok-api__/api/desktop/open-external-url",
@@ -187,6 +369,11 @@ fn desktop_api_router(app: AppHandle) -> Router {
             "/__byok-api__/api/desktop/switch-version",
             post(switch_version_handler),
         )
+        .route(
+            "/__byok-api__/api/desktop/release-history",
+            get(release_history_handler),
+        )
+        .layer(Extension(store))
         .layer(Extension(app))
 }
 
@@ -267,9 +454,7 @@ pub fn run() -> ExitCode {
     let started_by_autostart = std::env::args_os().any(|arg| arg == AUTOSTART_ARG);
 
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            open_terminal_with_command,
-        ])
+        .invoke_handler(tauri::generate_handler![open_terminal_with_command,])
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if !args.iter().any(|arg| arg == AUTOSTART_ARG) {
                 let _ = open_main_window(app);
@@ -295,8 +480,9 @@ pub fn run() -> ExitCode {
                 ));
                 config
             };
-            let server = tauri::async_runtime::block_on(App::new(config))?
-                .merge_router(desktop_api_router(app.handle().clone()));
+            let app_instance = tauri::async_runtime::block_on(App::new(config))?;
+            let store = app_instance.store();
+            let server = app_instance.merge_router(desktop_api_router(app.handle().clone(), store));
             #[cfg(not(dev))]
             let server = server.merge_router(frontend::router(app.handle().clone()));
             let listener = tauri::async_runtime::block_on(server.bind())?;
@@ -383,4 +569,42 @@ pub fn run() -> ExitCode {
     });
 
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_atom_releases_feed() {
+        let sample = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>tag:github.com,2008:Repository/1449368712/v1.0.5</id>
+    <updated>2026-11-10T12:44:04Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/root462/cursor-byok/releases/tag/v1.0.5"/>
+    <title>Cursor BYOK v1.0.5</title>
+    <content type="html">&lt;p&gt;Download the installer for your platform from the assets below.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1449368712/v1.0.4</id>
+    <updated>2026-11-09T04:27:38Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/root462/cursor-byok/releases/tag/v1.0.4"/>
+    <title>Cursor BYOK v1.0.4</title>
+    <content type="html">&lt;p&gt;Bug fixes&lt;/p&gt;</content>
+  </entry>
+</feed>"#;
+        let releases = parse_atom_releases(sample);
+        assert_eq!(releases.len(), 2);
+        assert_eq!(releases[0].version, "1.0.5");
+        assert_eq!(releases[0].tag_name, "v1.0.5");
+        assert_eq!(releases[0].name, "Cursor BYOK v1.0.5");
+        assert_eq!(releases[0].published_at, "2026-11-10T12:44:04Z");
+        assert_eq!(
+            releases[0].body,
+            "Download the installer for your platform from the assets below."
+        );
+        assert_eq!(releases[1].version, "1.0.4");
+        assert_eq!(releases[1].tag_name, "v1.0.4");
+    }
 }

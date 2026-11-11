@@ -149,7 +149,13 @@ pub async fn set_model_enabled(
         }
     };
     service
-        .plugin_set_model_enabled(&plugin_id, &provider_id, model_id, enabled, reasoning_effort)
+        .plugin_set_model_enabled(
+            &plugin_id,
+            &provider_id,
+            model_id,
+            enabled,
+            reasoning_effort,
+        )
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

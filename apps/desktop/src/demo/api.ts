@@ -186,6 +186,26 @@ export function installDemoApi() {
     if (path === "/desktop/switch-version") {
       return empty();
     }
+    if (path === "/desktop/release-history") {
+      return json([
+        {
+          version: "1.0.5",
+          tagName: "v1.0.5",
+          name: "v1.0.5",
+          publishedAt: "2026-11-10T12:00:00Z",
+          body: "1.0.5 release",
+          prerelease: false,
+        },
+        {
+          version: "1.0.4",
+          tagName: "v1.0.4",
+          name: "v1.0.4",
+          publishedAt: "2026-11-08T12:00:00Z",
+          body: "1.0.4 release",
+          prerelease: false,
+        },
+      ]);
+    }
 
     return json({ message: `Unhandled demo endpoint: ${method} ${path}` }, 404);
   };

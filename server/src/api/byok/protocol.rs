@@ -10,14 +10,14 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Protocol {
+pub(crate) enum Protocol {
     Chat,
     Responses,
     Messages,
 }
 
 impl Protocol {
-    pub(super) fn provider_type(self) -> ProviderType {
+    pub(crate) fn provider_type(self) -> ProviderType {
         match self {
             Self::Chat => ProviderType::OpenAiChat,
             Self::Responses => ProviderType::OpenAiResponses,
@@ -26,13 +26,13 @@ impl Protocol {
     }
 }
 
-pub(super) struct ParsedRequest {
+pub(crate) struct ParsedRequest {
     pub public_model_id: String,
     pub request: ModelRequest,
     pub stream: bool,
 }
 
-pub(super) fn parse(protocol: Protocol, body: &Value) -> Result<ParsedRequest> {
+pub(crate) fn parse(protocol: Protocol, body: &Value) -> Result<ParsedRequest> {
     let public_model_id = required_string(body, "model")?.to_owned();
     let stream = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
     let mut prompt = PromptSpec {
@@ -58,7 +58,7 @@ pub(super) fn parse(protocol: Protocol, body: &Value) -> Result<ParsedRequest> {
                 .to_owned();
             match body.get("input") {
                 Some(Value::String(text)) => history.push(text_message(0, Role::User, text)),
-                Some(input) => parse_responses_input(input, &mut history)?,
+                Some(input) => parse_responses_input(input, &mut history, &mut prompt)?,
                 None => return Err(Error::Protocol("input is required".into())),
             }
             parse_tools(body.get("tools"), protocol, &mut prompt)?;
@@ -271,52 +271,132 @@ fn parse_chat_messages(
     Ok(())
 }
 
-fn parse_responses_input(value: &Value, history: &mut Vec<ProjectedMessage>) -> Result<()> {
+fn parse_responses_input(
+    value: &Value,
+    history: &mut Vec<ProjectedMessage>,
+    prompt: &mut PromptSpec,
+) -> Result<()> {
     let items = value
         .as_array()
         .ok_or_else(|| Error::Protocol("input must be text or an array".into()))?;
     for (index, item) in items.iter().enumerate() {
         match item.get("type").and_then(Value::as_str) {
-            Some("function_call_output") => history.push(ProjectedMessage {
-                message_id: format!("external:{index}"),
-                role: Role::Tool,
-                content: ProjectedContent::ToolResult(ToolResultContent {
-                    call_id: required_string(item, "call_id")?.into(),
-                    name: tool_name(history, required_string(item, "call_id")?)
-                        .unwrap_or_else(|| "tool".into()),
-                    content: text_content(item.get("output")).unwrap_or_default(),
-                    is_error: false,
-                    image: None,
-                    provider_parts: Vec::new(),
-                }),
-            }),
-            Some("function_call") => history.push(ProjectedMessage {
-                message_id: format!("external:{index}"),
-                role: Role::Assistant,
-                content: ProjectedContent::Assistant {
-                    text: String::new(),
-                    thinking: String::new(),
-                    replay_state: None,
-                    calls: vec![ToolCallContent {
-                        index: 0,
-                        call_id: required_string(item, "call_id")?.into(),
-                        name: required_string(item, "name")?.into(),
-                        arguments: serde_json::from_str(required_string(item, "arguments")?)?,
-                    }],
-                },
-            }),
+            Some("additional_tools") => {
+                if let Some(tools) = item.get("tools").and_then(Value::as_array) {
+                    for tool in tools {
+                        extract_tool_definition(tool, &mut prompt.tools);
+                    }
+                }
+            }
+            Some("web_search") => {}
+            Some("function_call_output")
+            | Some("custom_tool_call_output")
+            | Some("tool_search_output") => {
+                let call_id = item
+                    .get("call_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let output = match item.get("output") {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(v) => v.to_string(),
+                    None => String::new(),
+                };
+                history.push(ProjectedMessage {
+                    message_id: format!("external:{index}"),
+                    role: Role::Tool,
+                    content: ProjectedContent::ToolResult(ToolResultContent {
+                        call_id: call_id.into(),
+                        name: tool_name(history, call_id).unwrap_or_else(|| "tool".into()),
+                        content: output,
+                        is_error: false,
+                        image: None,
+                        provider_parts: Vec::new(),
+                    }),
+                });
+            }
+            Some("function_call") | Some("custom_tool_call") | Some("tool_search_call") => {
+                let call_id = item
+                    .get("call_id")
+                    .or_else(|| item.get("id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let name = item
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("function");
+                let args = item
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .or_else(|| item.get("arguments").cloned())
+                    .or_else(|| item.get("input").cloned())
+                    .unwrap_or(Value::Object(Default::default()));
+
+                history.push(ProjectedMessage {
+                    message_id: format!("external:{index}"),
+                    role: Role::Assistant,
+                    content: ProjectedContent::Assistant {
+                        text: String::new(),
+                        thinking: String::new(),
+                        replay_state: None,
+                        calls: vec![ToolCallContent {
+                            index: 0,
+                            call_id: call_id.into(),
+                            name: name.into(),
+                            arguments: args,
+                        }],
+                    },
+                });
+            }
+            Some("reasoning") => {
+                let reasoning_text = item
+                    .get("summary")
+                    .and_then(Value::as_array)
+                    .and_then(|arr| {
+                        let text: String = arr
+                            .iter()
+                            .filter_map(|p| p.get("text").and_then(Value::as_str))
+                            .collect();
+                        if text.is_empty() {
+                            None
+                        } else {
+                            Some(text)
+                        }
+                    })
+                    .or_else(|| item.get("text").and_then(Value::as_str).map(str::to_owned))
+                    .or_else(|| item.get("content").and_then(Value::as_str).map(str::to_owned));
+
+                if let Some(reasoning) = reasoning_text {
+                    if let Some(last) = history.last_mut() {
+                        if let ProjectedContent::Assistant { thinking, .. } = &mut last.content {
+                            if !thinking.is_empty() {
+                                thinking.push('\n');
+                            }
+                            thinking.push_str(&reasoning);
+                        }
+                    }
+                }
+            }
             _ => {
                 let role = item.get("role").and_then(Value::as_str).unwrap_or("user");
                 let role = match role {
                     "user" => Role::User,
                     "assistant" => Role::Assistant,
+                    "system" | "developer" => Role::System,
                     _ => return Err(Error::Protocol(format!("unsupported role: {role}"))),
                 };
-                history.push(ProjectedMessage {
-                    message_id: format!("external:{index}"),
-                    role,
-                    content: ProjectedContent::Parts(parse_parts(item.get("content"))?),
-                });
+                let content_val = item.get("content").or_else(|| item.get("text"));
+                let parts = match content_val {
+                    Some(val) => parse_parts(Some(val))?,
+                    None => Vec::new(),
+                };
+                if !parts.is_empty() || matches!(role, Role::Assistant) {
+                    history.push(ProjectedMessage {
+                        message_id: format!("external:{index}"),
+                        role,
+                        content: ProjectedContent::Parts(parts),
+                    });
+                }
             }
         }
     }
@@ -404,6 +484,14 @@ fn parse_anthropic_messages(
                         calls,
                     },
                 });
+            } else if role == "system" || role == "developer" {
+                if !text_parts.is_empty() {
+                    history.push(ProjectedMessage {
+                        message_id: format!("external:{index}"),
+                        role: Role::System,
+                        content: ProjectedContent::Parts(text_parts),
+                    });
+                }
             } else if !text_parts.is_empty() {
                 history.push(ProjectedMessage {
                     message_id: format!("external:{index}"),
@@ -415,6 +503,7 @@ fn parse_anthropic_messages(
             let role = match role {
                 "user" => Role::User,
                 "assistant" => Role::Assistant,
+                "system" | "developer" => Role::System,
                 _ => return Err(Error::Protocol(format!("unsupported role: {role}"))),
             };
             history.push(ProjectedMessage {
@@ -427,7 +516,65 @@ fn parse_anthropic_messages(
     Ok(())
 }
 
-fn parse_tools(value: Option<&Value>, protocol: Protocol, prompt: &mut PromptSpec) -> Result<()> {
+fn extract_tool_definition(tool: &Value, list: &mut Vec<ToolDefinition>) {
+    // If it's a namespace, unpack child tools
+    if tool.get("type").and_then(Value::as_str) == Some("namespace") {
+        if let Some(children) = tool
+            .get("tools")
+            .or_else(|| tool.get("children"))
+            .and_then(Value::as_array)
+        {
+            for child in children {
+                extract_tool_definition(child, list);
+            }
+            return;
+        }
+    }
+
+    let function = tool.get("function").unwrap_or(tool);
+    let name = function
+        .get("name")
+        .or_else(|| tool.get("name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|n| !n.is_empty());
+
+    let Some(name) = name else {
+        // Skip tools without a name (e.g. web_search or unsupported objects)
+        return;
+    };
+
+    let description = function
+        .get("description")
+        .or_else(|| tool.get("description"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    let mut parameters = function
+        .get("parameters")
+        .or_else(|| function.get("input_schema"))
+        .or_else(|| tool.get("parameters"))
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({"type": "object", "properties": {}}));
+
+    if let Some(obj) = parameters.as_object_mut() {
+        if obj.get("type").and_then(Value::as_str) != Some("object") {
+            obj.insert("type".to_string(), serde_json::json!("object"));
+        }
+        if !obj.contains_key("properties") {
+            obj.insert("properties".to_string(), serde_json::json!({}));
+        }
+    }
+
+    list.push(ToolDefinition {
+        name: name.to_string(),
+        description,
+        parameters,
+    });
+}
+
+fn parse_tools(value: Option<&Value>, _protocol: Protocol, prompt: &mut PromptSpec) -> Result<()> {
     let Some(value) = value else {
         return Ok(());
     };
@@ -435,24 +582,7 @@ fn parse_tools(value: Option<&Value>, protocol: Protocol, prompt: &mut PromptSpe
         .as_array()
         .ok_or_else(|| Error::Protocol("tools must be an array".into()))?;
     for tool in tools {
-        let function = if matches!(protocol, Protocol::Chat) {
-            tool.get("function").unwrap_or(tool)
-        } else {
-            tool
-        };
-        prompt.tools.push(ToolDefinition {
-            name: required_string(function, "name")?.into(),
-            description: function
-                .get("description")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .into(),
-            parameters: function
-                .get("parameters")
-                .or_else(|| function.get("input_schema"))
-                .cloned()
-                .unwrap_or(serde_json::json!({"type":"object","properties":{}})),
-        });
+        extract_tool_definition(tool, &mut prompt.tools);
     }
     Ok(())
 }
@@ -468,4 +598,109 @@ fn tool_name(history: &[ProjectedMessage], call_id: &str) -> Option<String> {
                 .map(|call| call.name.clone()),
             _ => None,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_parse_anthropic_messages_with_system_role() {
+        let body = json!({
+            "model": "gpt-6.1-sol",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant."
+                },
+                {
+                    "role": "user",
+                    "content": "Hello!"
+                }
+            ],
+            "max_tokens": 1024
+        });
+
+        let parsed = parse(Protocol::Messages, &body).expect("should parse successfully");
+        assert_eq!(parsed.request.history.len(), 2);
+        assert_eq!(parsed.request.history[0].role, Role::System);
+        assert_eq!(parsed.request.history[1].role, Role::User);
+    }
+
+    #[test]
+    fn test_parse_responses_with_reasoning_and_tool_outputs() {
+        let body = json!({
+            "model": "deepseek-v4.1",
+            "instructions": "Be concise",
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "What is 2+2?"}]
+                },
+                {
+                    "type": "reasoning",
+                    "summary": [{"type": "summary_text", "text": "User asks for simple arithmetic"}]
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "call_123",
+                    "name": "calc",
+                    "arguments": "{\"expr\":\"2+2\"}"
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_123",
+                    "output": "4"
+                }
+            ]
+        });
+
+        let parsed = parse(Protocol::Responses, &body).expect("should parse responses");
+        assert_eq!(parsed.request.prompt.instructions, "Be concise");
+        assert_eq!(parsed.request.history.len(), 3);
+        assert_eq!(parsed.request.history[0].role, Role::User);
+        assert_eq!(parsed.request.history[1].role, Role::Assistant);
+        assert_eq!(parsed.request.history[2].role, Role::Tool);
+    }
+
+    #[test]
+    fn test_parse_responses_with_codex_tools_and_namespaces() {
+        let body = json!({
+            "model": "deepseek-v4.1",
+            "input": [{"type": "message", "role": "user", "content": "hi"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "exec_command",
+                        "description": "Run shell command",
+                        "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}}
+                    }
+                },
+                {
+                    "type": "namespace",
+                    "name": "developer",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "description": "Read file content"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "web_search"
+                }
+            ]
+        });
+
+        let parsed = parse(Protocol::Responses, &body).expect("should parse responses tools");
+        assert_eq!(parsed.request.prompt.tools.len(), 2);
+        assert_eq!(parsed.request.prompt.tools[0].name, "exec_command");
+        assert_eq!(parsed.request.prompt.tools[1].name, "read_file");
+    }
 }

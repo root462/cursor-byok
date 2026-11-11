@@ -114,7 +114,16 @@ function CollapsibleGroup({ label, icon, defaultOpen = true, onSettings, childre
   </Card>;
 }
 
-function ModelListRow({ model, disabled, testing, result, onTest, onEdit, onDuplicate, onDelete }: {
+function ModelListRow({
+  model,
+  disabled,
+  testing,
+  result,
+  onTest,
+  onEdit,
+  onDuplicate,
+  onDelete,
+}: {
   model: Model;
   disabled: boolean;
   testing: boolean;

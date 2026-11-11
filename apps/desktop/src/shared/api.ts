@@ -107,6 +107,23 @@ export interface CursorHarnessStatus {
   ca_install_command: string | null;
 }
 
+export interface ClaudeHarnessStatus {
+  installed: boolean;
+  config_path: string;
+  configured_models: number;
+  settings_applied: boolean;
+  current_model: string | null;
+}
+
+export interface CodexHarnessStatus {
+  installed: boolean;
+  config_path: string;
+  catalog_path: string;
+  configured_models: number;
+  settings_applied: boolean;
+  current_model: string | null;
+}
+
 export interface CursorRuntimeStatus {
   mismatch_count: number;
   last_detected_at_ms: number | null;
@@ -125,6 +142,15 @@ export interface CursorAppInfo {
 export interface PortSettings {
   proxy_port: number;
   service_port: number;
+}
+
+export interface ReleaseInfo {
+  version: string;
+  tagName: string;
+  name: string;
+  publishedAt: string;
+  body: string;
+  prerelease: boolean;
 }
 
 export interface ExternalApiSettings {
@@ -539,6 +565,17 @@ export const api = {
   deleteModel: (hash: string) => request<void>(`/models/${hash}`, { method: "DELETE" }),
   testModel: (hash: string, testId: string, signal?: AbortSignal) => request<ModelConnectivityResult>(`/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "POST", signal }),
   cancelModelTest: (hash: string, testId: string) => request<void>(`/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "DELETE" }),
+  clientModels: (client: "claude" | "codex") => request<Model[]>(`/harness/${client}/models`),
+  createClientModels: (client: "claude" | "codex", models: ModelInput[]) => request<Model[]>(`/harness/${client}/models`, { method: "POST", body: JSON.stringify({ models }) }),
+  reorderClientModels: (client: "claude" | "codex", modelHashes: string[]) => request<Model[]>(`/harness/${client}/models/order`, { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }),
+  updateClientModel: (client: "claude" | "codex", hash: string, model: ModelInput) => request<Model>(`/harness/${client}/models/${encodeURIComponent(hash)}`, { method: "PUT", body: JSON.stringify(model) }),
+  deleteClientModel: (client: "claude" | "codex", hash: string) => request<void>(`/harness/${client}/models/${encodeURIComponent(hash)}`, { method: "DELETE" }),
+  testClientModel: (client: "claude" | "codex", hash: string, testId: string, signal?: AbortSignal) => request<ModelConnectivityResult>(`/harness/${client}/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "POST", signal }),
+  claudeHarness: () => request<ClaudeHarnessStatus>("/harness/claude/status"),
+  setClaudeEnabled: (enabled: boolean) => request<ClaudeHarnessStatus>("/harness/claude/enabled", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  codexHarness: () => request<CodexHarnessStatus>("/harness/codex/status"),
+  codexRunning: () => request<{ running: boolean }>("/harness/codex/running"),
+  setCodexEnabled: (enabled: boolean, terminateProcess?: boolean) => request<CodexHarnessStatus>("/harness/codex/enabled", { method: "PUT", body: JSON.stringify({ enabled, terminate_process: Boolean(terminateProcess) }) }),
   overview: (filter?: { startMs: number; endMs: number; modelHashes?: string[]; bucketMs?: number }) => {
     const params = new URLSearchParams();
     if (filter) {
@@ -551,6 +588,7 @@ export const api = {
     return request<Overview>(`/overview${query ? `?${query}` : ""}`);
   },
   cursorHarness: () => request<CursorHarnessStatus>("/harness/cursor/status"),
+  cursorRunning: () => request<{ running: boolean }>("/harness/cursor/running"),
   cursorAppInfo: () => request<CursorAppInfo>("/harness/cursor/app"),
   cursorRuntimeStatus: () => request<CursorRuntimeStatus>("/harness/cursor/runtime-status", { signal: AbortSignal.timeout(5_000) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
@@ -578,7 +616,7 @@ export const api = {
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
     await writeText(text);
   },
-  setCursorEnabled: (enabled: boolean) => request<CursorHarnessStatus>("/harness/cursor/enabled", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  setCursorEnabled: (enabled: boolean, terminateProcess?: boolean) => request<CursorHarnessStatus>("/harness/cursor/enabled", { method: "PUT", body: JSON.stringify({ enabled, terminate_process: Boolean(terminateProcess) }) }),
   calls: () => request<LlmCall[]>("/llm-calls?limit=200"),
   call: (id: string) => request<CallDetail>(`/llm-calls/${encodeURIComponent(id)}`),
   openCallDetails: async (id: string) => {
@@ -597,6 +635,7 @@ export const api = {
     await request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url }) }).catch(() => undefined);
   },
   switchVersion: (version: string) => request<void>("/desktop/switch-version", { method: "POST", body: JSON.stringify({ version }) }),
+  releaseHistory: () => request<ReleaseInfo[]>("/desktop/release-history"),
   observability: () => request<{ detailed: boolean }>("/settings/observability"),
   setObservability: (detailed: boolean) => request<{ detailed: boolean }>("/settings/observability", { method: "PUT", body: JSON.stringify({ detailed }) }),
   ports: () => request<PortSettings>("/settings/ports"),

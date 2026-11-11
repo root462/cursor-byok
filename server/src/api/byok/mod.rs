@@ -1,8 +1,8 @@
 //! External OpenAI and Anthropic compatible API.
 mod direct;
 mod models;
-mod output;
-mod protocol;
+pub(crate) mod output;
+pub(crate) mod protocol;
 
 use std::sync::Arc;
 

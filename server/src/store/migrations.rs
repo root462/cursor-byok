@@ -96,6 +96,33 @@ pub(super) async fn run(pool: &SqlitePool, database_path: &Path) -> Result<()> {
     log_database_files(database_path);
     log_sqlite_state(pool).await?;
 
+    let table_exists: i64 = sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = '_sqlx_migrations'
+         )",
+    )
+    .fetch_one(pool)
+    .await?;
+    if table_exists != 0 {
+        let max_known = ALL_MIGRATIONS
+            .iter()
+            .map(|m| m.version)
+            .max()
+            .unwrap_or(0);
+        let deleted = sqlx::query("DELETE FROM _sqlx_migrations WHERE version > ?")
+            .bind(max_known)
+            .execute(pool)
+            .await?;
+        if deleted.rows_affected() > 0 {
+            tracing::warn!(
+                deleted_count = deleted.rows_affected(),
+                max_known,
+                "cleaned up unversioned migration records from _sqlx_migrations"
+            );
+        }
+    }
+
     let applied = load_applied_migrations(pool).await?;
     let (migrator, line_endings) = select_migrator(&applied);
     tracing::info!(
@@ -455,11 +482,50 @@ mod tests {
             .await
             .unwrap();
 
+            let client_models_table_exists: i64 = sqlx::query_scalar(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'client_model_configs'
+                 )",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
             assert_eq!(checksum_after, checksum_before);
-            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
             assert_eq!(checkpoint_table_exists, 1);
             assert_eq!(argument_error_column_exists, 1);
+            assert_eq!(client_models_table_exists, 1);
         }
+    }
+
+    #[tokio::test]
+    async fn orphaned_future_migrations_are_pruned_automatically() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        run(&pool, Path::new("test.db")).await.unwrap();
+
+        sqlx::query(
+            "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time)
+             VALUES (11, 'abandoned future migration', 1, X'1234', 1000)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        run(&pool, Path::new("test.db")).await.unwrap();
+
+        let versions: Vec<i64> =
+            sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     }
 
     #[test]

@@ -110,8 +110,10 @@ impl Store {
             let price = pricing.effective_pricing(model_hash.as_deref(), &model_id);
             input_cost_usd += (row_input as f64 / 1_000_000.0) * price.input_per_million;
             output_cost_usd += (row_output as f64 / 1_000_000.0) * price.output_per_million;
-            cache_read_cost_usd += (row_cache_read as f64 / 1_000_000.0) * price.cache_read_per_million;
-            cache_write_cost_usd += (row_cache_write as f64 / 1_000_000.0) * price.cache_write_per_million;
+            cache_read_cost_usd +=
+                (row_cache_read as f64 / 1_000_000.0) * price.cache_read_per_million;
+            cache_write_cost_usd +=
+                (row_cache_write as f64 / 1_000_000.0) * price.cache_write_per_million;
         }
 
         let estimated_cache_cost_usd = cache_read_cost_usd + cache_write_cost_usd;
@@ -321,7 +323,7 @@ mod tests {
                 'openai', 'http://127.0.0.1', 'openai', 'http://127.0.0.1/chat', 'custom-model',
                 'Custom Model', 'completed', 1000, 1, 0, 0,
                 3000000, 1000000, 1000000, 1000000
-            )"
+            )",
         )
         .execute(store.pool())
         .await
@@ -360,13 +362,16 @@ mod tests {
                 'openai', 'http://127.0.0.1', 'openai', 'http://127.0.0.1/chat', 'llama-3',
                 'Llama 3', 'completed', 3000, 1, 0, 0,
                 1000000, 1000000, 0, 0
-            )"
+            )",
         )
         .execute(store.pool())
         .await
         .unwrap();
 
-        let overview = store.overview(Some(0), Some(5000), None, None).await.unwrap();
+        let overview = store
+            .overview(Some(0), Some(5000), None, None)
+            .await
+            .unwrap();
 
         // Total calls = 3
         assert_eq!(overview.metrics.llm_calls, 3);
