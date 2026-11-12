@@ -6,7 +6,7 @@ import type { CallColumnSpec } from "./callColumns";
 import { ColumnSettings } from "./ColumnSettings";
 
 /** 全部列都显示时的基准宽度，按可见列数等比缩放表格最小宽度。 */
-const FULL_TABLE_MIN_WIDTH = 4180;
+const FULL_TABLE_MIN_WIDTH = 4420;
 
 export function CallTable({ calls, columns, hidden, onHiddenChange }: {
   calls: LlmCall[];

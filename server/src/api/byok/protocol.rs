@@ -584,6 +584,12 @@ fn parse_tools(value: Option<&Value>, _protocol: Protocol, prompt: &mut PromptSp
     for tool in tools {
         extract_tool_definition(tool, &mut prompt.tools);
     }
+    // Codex Desktop registers unrelated tool suites that reuse the same name
+    // (`js`, `js_reset` for both the browser CUA and the node REPL). Strict
+    // upstreams reject the whole request on the duplicate, so the first
+    // definition wins and later namesakes are dropped.
+    let mut seen = std::collections::HashSet::new();
+    prompt.tools.retain(|tool| seen.insert(tool.name.clone()));
     Ok(())
 }
 
@@ -702,5 +708,24 @@ mod tests {
         assert_eq!(parsed.request.prompt.tools.len(), 2);
         assert_eq!(parsed.request.prompt.tools[0].name, "exec_command");
         assert_eq!(parsed.request.prompt.tools[1].name, "read_file");
+    }
+
+    #[test]
+    fn duplicate_tool_names_keep_the_first_definition() {
+        let body = json!({
+            "model": "deepseek-v4.1",
+            "input": [{"type": "message", "role": "user", "content": "hi"}],
+            "tools": [
+                {"type": "function", "name": "js", "description": "browser", "parameters": {"type": "object"}},
+                {"type": "function", "name": "js", "description": "node repl", "parameters": {"type": "object"}},
+                {"type": "function", "name": "js_reset", "description": "reset"},
+            ]
+        });
+
+        let parsed = parse(Protocol::Responses, &body).expect("should parse responses tools");
+        assert_eq!(parsed.request.prompt.tools.len(), 2);
+        assert_eq!(parsed.request.prompt.tools[0].name, "js");
+        assert_eq!(parsed.request.prompt.tools[0].description, "browser");
+        assert_eq!(parsed.request.prompt.tools[1].name, "js_reset");
     }
 }

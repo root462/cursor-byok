@@ -45,6 +45,11 @@ function focusableElements(root: HTMLElement) {
 /** 与 Modal.module.scss 里 oa-dialog-out 的时长保持一致。 */
 const CLOSE_ANIMATION_MS = 170;
 
+/* 打开中的弹窗栈，用来判断 Escape 归谁处理。
+   弹窗可以嵌套（编辑面板压在提示词列表上），Escape 只能关掉最上面那一层，
+   否则按一次键会连列表一起关掉。 */
+const openDialogs: string[] = [];
+
 export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, square, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), closeVariant = "secondary", submitLabel = t("保存"), submitVariant = "primary", submitDisabled = false }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
@@ -74,7 +79,10 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
+    openDialogs.push(titleId);
     const onKey = (event: KeyboardEvent) => {
+      // 嵌套弹窗只有最上层接键盘：焦点陷阱与 Escape 都留给它，外层不动。
+      if (openDialogs.at(-1) !== titleId) return;
       if (event.key === "Escape" && !busyRef.current) {
         event.preventDefault();
         closeRef.current();
@@ -108,6 +116,8 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
     return () => {
       cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", onKey);
+      const index = openDialogs.indexOf(titleId);
+      if (index >= 0) openDialogs.splice(index, 1);
       if (previous && document.contains(previous)) previous.focus();
     };
   }, [initialFocus, open]);

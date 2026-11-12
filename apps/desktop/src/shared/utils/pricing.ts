@@ -128,16 +128,22 @@ export function globalDefaultPricing(pricing: TokenPricingSettings): ModelPricin
   };
 }
 
+/** 独立定价的作用域：同一套连接参数在不同客户端下各自拥有价格。 */
+export type PricingScope = "cursor" | "codex" | "claude";
+
+/** 单独定价的存储键，与服务端的 `{scope}:{model_hash}` 一致。 */
+export function pricingKey(scope: PricingScope, modelHash: string): string {
+  return `${scope}:${modelHash}`;
+}
+
 export function effectiveModelPricing(
   pricing: TokenPricingSettings,
+  scope: PricingScope,
   modelHash?: string | null,
   modelId?: string | null,
 ): ModelPricing {
-  if (modelHash && pricing.models?.[modelHash]) {
-    return pricing.models[modelHash];
-  }
-  if (modelId && pricing.models?.[modelId]) {
-    return pricing.models[modelId];
+  if (modelHash && pricing.models?.[pricingKey(scope, modelHash)]) {
+    return pricing.models[pricingKey(scope, modelHash)];
   }
   if (modelId) {
     const builtin = defaultModelPricing(modelId);
@@ -148,14 +154,8 @@ export function effectiveModelPricing(
 
 export function isModelCustomized(
   pricing: TokenPricingSettings,
+  scope: PricingScope,
   modelHash?: string | null,
-  modelId?: string | null,
 ): boolean {
-  if (modelHash && pricing.models?.[modelHash] !== undefined) {
-    return true;
-  }
-  if (modelId && pricing.models?.[modelId] !== undefined) {
-    return true;
-  }
-  return false;
+  return !!modelHash && pricing.models?.[pricingKey(scope, modelHash)] !== undefined;
 }

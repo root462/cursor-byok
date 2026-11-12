@@ -1,0 +1,264 @@
+@use "../../styles/typography" as type;
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 11px;
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+  border-radius: 9px;
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+    line-height: 1.55;
+  }
+}
+
+.fileLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: type.$font-size-xs;
+
+  code {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--oa-code-font);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* 目标文件状态：三种色调分别对应「一致 / 需要处理 / 未启用」，
+   与右侧图标一起读，不依赖颜色单独传达信息。 */
+.fileState {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+
+  &[data-tone="ok"] { color: var(--vscode-testing-iconPassed, #73c991); }
+  &[data-tone="warn"] { color: var(--vscode-editorWarning-foreground, #cca700); }
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.count {
+  margin-right: auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 16px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  text-align: center;
+  border: 1px dashed var(--vscode-sideBar-border);
+  border-radius: var(--oa-overlay-radius);
+
+  strong {
+    color: var(--vscode-foreground);
+    font-size: type.$font-size-base;
+  }
+}
+
+/* 弹窗很宽，卡片按列铺开：每条模板都有自己的完整宽度，名字、内容与操作互不挤压。 */
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: start;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* 一张卡片一条模板。启用中的那张换成强调色描边、染色底与左上角竖条，
+   一眼就能分出「哪条正在生效」，不必去读徽标。 */
+.row {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px 9px;
+  border: 1px solid var(--vscode-sideBar-border);
+  border-radius: 10px;
+
+  &[data-enabled] {
+    border-color: color-mix(in srgb, var(--vscode-focusBorder) 55%, transparent);
+    background: color-mix(in srgb, var(--vscode-focusBorder) 7%, transparent);
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 11px;
+      bottom: 11px;
+      left: -1px;
+      width: 2px;
+      background: var(--vscode-focusBorder);
+      border-radius: 2px;
+    }
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: type.$font-size-base;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px 1px 5px;
+  color: var(--vscode-focusBorder);
+  font-size: type.$font-size-2xs;
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 45%, transparent);
+  border-radius: 999px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  white-space: nowrap;
+}
+
+.separator {
+  opacity: 0.6;
+}
+
+/* 预览固定三行，超出部分按行截断；完整内容在编辑弹窗里看。 */
+.preview {
+  display: -webkit-box;
+  padding: 7px 9px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+  border-radius: 6px;
+  font-family: var(--oa-code-font);
+  font-size: type.$font-size-2xs;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.emptyPreview {
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, transparent);
+  font-style: italic;
+}
+
+/* 操作条压在卡片底部：左侧留出启用开关，右侧是编辑与删除两颗胶囊按钮。 */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.actionsSpacer {
+  flex: 1 1 auto;
+}
+
+.dangerButton:hover:not(:disabled) {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+/* 禁用按钮不派发指针事件，提示框要挂在这层包装上才出得来。 */
+.disabledAnchor {
+  display: inline-flex;
+}
+
+/* 编辑器在 fullHeight 弹窗里撑满剩余高度，文本域占满宽度与高度。 */
+.editor {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.editorBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.contentLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+
+  textarea {
+    flex: 1 1 auto;
+    min-height: 160px;
+  }
+}
+
+.contentLabelRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 20px;
+
+  small {
+    overflow: hidden;
+    font-size: type.$font-size-2xs;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.enableRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+  }
+}

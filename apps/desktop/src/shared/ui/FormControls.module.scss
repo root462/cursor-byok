@@ -59,6 +59,17 @@
   }
 }
 
+// 多行输入：文本域需要自己的高度与内边距，并允许纵向拉伸。
+.textarea {
+  height: auto;
+  min-height: 96px;
+  padding: 8px 10px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: var(--oa-code-font);
+  font-size: type.$font-size-xs;
+}
+
 .secret {
   position: relative;
   width: 100%;

@@ -4,6 +4,7 @@ pub mod app;
 pub mod config;
 pub mod control;
 pub mod cursor;
+pub mod customization;
 pub mod error;
 pub mod local_app;
 pub mod model;

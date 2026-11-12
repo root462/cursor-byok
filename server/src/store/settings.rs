@@ -38,12 +38,46 @@ pub struct ModelPricing {
     pub cache_write_per_million: f64,
 }
 
+impl ModelPricing {
+    /// 按百万 Token 单价折算的调用花费（美元）。
+    pub fn cost(
+        &self,
+        input_tokens: i64,
+        cache_read_tokens: i64,
+        cache_write_tokens: i64,
+        output_tokens: i64,
+    ) -> f64 {
+        let per_million = |tokens: i64, price: f64| (tokens.max(0) as f64 / 1_000_000.0) * price;
+        per_million(input_tokens, self.input_per_million)
+            + per_million(output_tokens, self.output_per_million)
+            + per_million(cache_read_tokens, self.cache_read_per_million)
+            + per_million(cache_write_tokens, self.cache_write_per_million)
+    }
+}
+
+/// 计费口径的新增输入 Token：Anthropic 的 `input_tokens` 已排除缓存部分。
+pub fn billable_input_tokens(
+    request_type: &str,
+    input_tokens: i64,
+    cache_read_tokens: i64,
+    cache_write_tokens: i64,
+) -> i64 {
+    let input = input_tokens.max(0);
+    if request_type == "anthropic" {
+        input
+    } else {
+        (input - cache_read_tokens.max(0) - cache_write_tokens.max(0)).max(0)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TokenPricingSettings {
     pub input_per_million: f64,
     pub output_per_million: f64,
     pub cache_read_per_million: f64,
     pub cache_write_per_million: f64,
+    /// 键为 `{定价作用域}:{model_hash}`；同一套连接参数被多个客户端复用时
+    /// hash 相同，作用域让它们各自拥有独立价格。
     #[serde(default)]
     pub models: std::collections::BTreeMap<String, ModelPricing>,
 }
@@ -189,20 +223,30 @@ impl TokenPricingSettings {
         }
     }
 
-    pub fn effective_pricing(&self, model_hash: Option<&str>, model_id: &str) -> ModelPricing {
+    /// 按 `{scope}:{model_hash}` 查找单独定价。
+    ///
+    /// `scope` 让同一套连接参数（因而同一个 model_hash）在不同客户端下各自定价。
+    pub fn effective_pricing(
+        &self,
+        scope: &str,
+        model_hash: Option<&str>,
+        model_id: &str,
+    ) -> ModelPricing {
         if let Some(hash) = model_hash {
-            if let Some(pricing) = self.models.get(hash) {
+            if let Some(pricing) = self.models.get(&pricing_key(scope, hash)) {
                 return *pricing;
             }
-        }
-        if let Some(pricing) = self.models.get(model_id) {
-            return *pricing;
         }
         if let Some(pricing) = default_model_pricing(model_id) {
             return pricing;
         }
         self.default_pricing()
     }
+}
+
+/// 单独定价的存储键。
+pub fn pricing_key(scope: &str, model_hash: &str) -> String {
+    format!("{scope}:{model_hash}")
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -928,7 +972,7 @@ mod tests {
 
         let mut models = std::collections::BTreeMap::new();
         models.insert(
-            "custom-hash".into(),
+            "cursor:custom-hash".into(),
             super::ModelPricing {
                 input_per_million: 1.0,
                 output_per_million: 2.0,
@@ -950,17 +994,19 @@ mod tests {
         assert_eq!(loaded, custom);
 
         // Effective pricing tests
-        // 1. By model hash
-        let hash_pricing = loaded.effective_pricing(Some("custom-hash"), "any-model");
+        // 1. 按作用域 + model hash：同一 hash 在别的客户端下不生效
+        let hash_pricing = loaded.effective_pricing("cursor", Some("custom-hash"), "any-model");
         assert_eq!(hash_pricing.input_per_million, 1.0);
+        let other_scope = loaded.effective_pricing("codex", Some("custom-hash"), "any-model");
+        assert_eq!(other_scope.input_per_million, 3.0);
 
         // 2. By default model id (e.g. claude-3-5-sonnet)
-        let claude_pricing = loaded.effective_pricing(None, "claude-3-5-sonnet-20241022");
+        let claude_pricing = loaded.effective_pricing("claude", None, "claude-3-5-sonnet-20241022");
         assert_eq!(claude_pricing.input_per_million, 3.0);
         assert_eq!(claude_pricing.output_per_million, 15.0);
 
         // 3. Fallback to global default
-        let unknown_pricing = loaded.effective_pricing(None, "unknown-custom-model");
+        let unknown_pricing = loaded.effective_pricing("codex", None, "unknown-custom-model");
         assert_eq!(unknown_pricing.input_per_million, 3.0);
         assert_eq!(unknown_pricing.output_per_million, 15.0);
     }

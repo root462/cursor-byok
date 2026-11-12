@@ -22,9 +22,12 @@ use crate::{
 use self::{ca::CaManager, proxy::ProxyRuntime};
 
 pub use app_info::{detect_cursor_app, CursorAppInfo};
-pub use claude::{ClaudeHarness, ClaudeHarnessStatus};
-pub use codex::{CodexHarness, CodexHarnessStatus};
-pub use process::{is_codex_running, is_cursor_running, terminate_codex, terminate_cursor};
+pub use claude::{get_claude_config_dir, ClaudeHarness, ClaudeHarnessStatus};
+pub use codex::{get_codex_config_dir, CodexHarness, CodexHarnessStatus};
+pub use process::{
+    is_codex_running, is_cursor_running, restart_codex, terminate_codex, terminate_codex_async,
+    terminate_cursor,
+};
 
 pub(crate) fn proxy_host_allowed(host: &str) -> bool {
     proxy::is_cursor_host(host)

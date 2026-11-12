@@ -23,6 +23,54 @@
   padding: 0 4px !important;
 }
 
+/* 单次调用的 Token 明细与花费：Token 用小字，花费右对齐便于纵向比对。 */
+.usageCostCol {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+
+.usageCost {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usageTokens {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usagePrice {
+  flex: 0 0 auto;
+  color: var(--vscode-foreground);
+}
+
+/* 悬停提示：每项 Token 与花费占一行，数值右对齐，长数字不被截断。 */
+.usageTooltip {
+  display: grid;
+  gap: 2px;
+  min-width: 150px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usageTooltipRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+
+  > :last-child {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+}
+
 .detailButton {
   width: 28px;
   height: 28px;

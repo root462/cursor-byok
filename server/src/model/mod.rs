@@ -2,6 +2,7 @@
 
 mod checkpoint;
 mod configuration;
+mod customization;
 mod conversation;
 mod inference;
 mod message;
@@ -14,6 +15,7 @@ mod tool_result_replay;
 
 pub use checkpoint::*;
 pub use configuration::*;
+pub use customization::*;
 pub use conversation::*;
 pub use inference::*;
 pub use message::*;

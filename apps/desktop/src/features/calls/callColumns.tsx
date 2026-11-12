@@ -1,12 +1,64 @@
-import type { LlmCall } from "../../shared/api";
+import type { LlmCall, UsageClient } from "../../shared/api";
+import type { ReactNode } from "react";
 import type { DataTableColumn } from "../../shared/ui/DataTable";
 import { Icon } from "../../shared/ui/Icon";
 import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
 import { eyeIcon } from "../../shared/ui/icons";
+import { formatCompactInteger, formatInteger } from "../../shared/utils/numberFormat";
 import styles from "./CallTable.module.scss";
 
 const value = (input: string | number | null) => input ?? "-";
 const milliseconds = (input: number | null) => input == null ? "-" : `${input} ms`;
+
+function formatCost(value: number | null) {
+  if (value == null) return "-";
+  if (value > 0 && value < 0.01) return `$${value.toFixed(6)}`;
+  return `$${value.toFixed(4)}`;
+}
+
+/** 单次调用的四项 Token 明细；未报告 Token 的调用只显示占位符。 */
+function usageSummary(call: LlmCall) {
+  if (call.input_tokens == null && call.output_tokens == null) return "-";
+  return [
+    `${t("输入")} ${formatCompactInteger(call.input_tokens ?? 0)}`,
+    `${t("输出")} ${formatCompactInteger(call.output_tokens ?? 0)}`,
+    `${t("读缓存")} ${formatCompactInteger(call.cache_read_tokens ?? 0)}`,
+    `${t("写缓存")} ${formatCompactInteger(call.cache_write_tokens ?? 0)}`,
+  ].join(" · ");
+}
+
+/** 悬停提示里的完整 Token 明细与花费，避免窄列截断信息。 */
+function usageTooltip(call: LlmCall): ReactNode {
+  const rows: Array<[string, number]> = [
+    [t("输入"), call.input_tokens ?? 0],
+    [t("输出"), call.output_tokens ?? 0],
+    [t("读缓存"), call.cache_read_tokens ?? 0],
+    [t("写缓存"), call.cache_write_tokens ?? 0],
+  ];
+  return (
+    <span className={styles.usageTooltip}>
+      {rows.map(([label, tokens]) => (
+        <span key={label} className={styles.usageTooltipRow}>
+          <span>{label}</span>
+          <span>{formatInteger(tokens)}</span>
+        </span>
+      ))}
+      <span className={styles.usageTooltipRow}>
+        <span>{t("估算花费")}</span>
+        <span>{call.estimated_cost_usd == null ? "-" : `$${call.estimated_cost_usd.toFixed(6)}`}</span>
+      </span>
+    </span>
+  );
+}
+
+/** 调用来源的展示名；未识别的来源原样显示，避免新增客户端时丢失信息。 */
+export function clientLabel(client: UsageClient | string): string {
+  if (client === "cursor") return "Cursor";
+  if (client === "codex") return "Codex";
+  if (client === "claude") return "Claude CLI";
+  if (client === "external_api") return t("外部 API");
+  return client;
+}
 
 /** 一列的完整定义：既供表格渲染，也供列显隐面板列出条目。 */
 export type CallColumnSpec = {
@@ -75,6 +127,23 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       },
     },
     {
+      key: "usage_cost",
+      label: t("Token 与花费"),
+      column: {
+        key: "usage_cost",
+        header: t("Token 与花费"),
+        className: styles.usageCostCol,
+        render: (call) => (
+          <TooltipTrigger label={usageTooltip(call)}>
+            <span className={styles.usageCost}>
+              <span className={styles.usageTokens}>{usageSummary(call)}</span>
+              <span className={styles.usagePrice}>{formatCost(call.estimated_cost_usd)}</span>
+            </span>
+          </TooltipTrigger>
+        ),
+      },
+    },
+    {
       key: "created_at",
       label: t("时间"),
       column: {
@@ -118,6 +187,16 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
         key: "call_kind",
         header: t("调用类型"),
         render: (call) => call.call_kind === "cursor_official" ? t("Cursor 官方") : "LLM",
+      },
+    },
+    {
+      key: "client",
+      label: t("来源"),
+      column: {
+        key: "client",
+        header: t("来源"),
+        render: (call) => clientLabel(call.client),
+        title: (call) => clientLabel(call.client),
       },
     },
     {

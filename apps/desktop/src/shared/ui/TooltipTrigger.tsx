@@ -1,4 +1,4 @@
-import { cloneElement, useCallback, useEffect, useId, useRef, useState, type FocusEventHandler, type PointerEventHandler, type ReactElement } from "react";
+import { cloneElement, useCallback, useEffect, useId, useRef, useState, type FocusEventHandler, type PointerEventHandler, type ReactElement, type ReactNode } from "react";
 import { useTooltip, type TooltipAnchor } from "./Tooltip";
 
 
@@ -15,7 +15,7 @@ type TriggerProps = {
   onBlur?: FocusEventHandler<HTMLElement>;
 };
 
-export function TooltipTrigger({ label, children }: { label: string; children: ReactElement<TriggerProps> }) {
+export function TooltipTrigger({ label, children }: { label: ReactNode; children: ReactElement<TriggerProps> }) {
   const { show: showTooltip, hide: hideTooltip } = useTooltip();
   const [anchor, setAnchor] = useState<TooltipAnchor | null>(null);
   const tooltipId = useId();

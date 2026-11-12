@@ -4,6 +4,7 @@ mod checkpoints;
 mod client_models;
 mod conversations;
 mod cursor_traces;
+mod customization;
 mod input_anchors;
 mod legacy_config;
 mod llm_calls;

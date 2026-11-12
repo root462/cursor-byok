@@ -19,13 +19,14 @@ use crate::{
         ContentPart, CursorRunTraceArtifact, CursorRunTraceSummary, LlmCallRequest,
         LlmCallResponseChunk, LlmCallSummary, ModelConfig, ModelConfigInput, ModelInvocation,
         ModelRequest, ModelSpec, ModelType, Overview, ProjectedContent, ProjectedMessage,
-        PromptSpec, ProviderType, Role,
+        PromptSpec, ProviderType, Role, UsageClient,
     },
     plugin::{PluginDescriptor, PluginRegistry, PluginRuntime, PluginRuntimeStatus},
     provider::{is_valid_response_event, ModelEvent, Provider},
     store::{
-        CommitSettings, DesktopSettings, ExternalApiSettings, PortSettings, ProxySettings,
-        ProxySettingsInput, StatisticsStorage, Store, TabSettings, TokenPricingSettings,
+        billable_input_tokens, CommitSettings, DesktopSettings, ExternalApiSettings, PortSettings,
+        ProxySettings, ProxySettingsInput, StatisticsStorage, Store, TabSettings,
+        TokenPricingSettings,
     },
     Error, Result,
 };
@@ -127,6 +128,33 @@ pub struct CallSummary {
     pub call: LlmCallSummary,
     pub call_kind: &'static str,
     pub route: &'static str,
+    /// 发起调用的客户端；Cursor 自己发起的请求为 `cursor`。
+    pub client: &'static str,
+}
+
+/// 由 Run ID 前缀识别发起调用的客户端；其余为本机 Cursor Run。
+pub fn call_client(run_id: &str) -> &'static str {
+    UsageClient::from_run_id(run_id).as_str()
+}
+
+/// 单次调用的估算花费；未报告任何 Token 时没有可估算的金额。
+fn call_cost(pricing: &TokenPricingSettings, call: &LlmCallSummary) -> Option<f64> {
+    let cache_read = call.cache_read_tokens.unwrap_or_default();
+    let cache_write = call.cache_write_tokens.unwrap_or_default();
+    let input = call.input_tokens.map(|input| {
+        billable_input_tokens(&call.request_type, input, cache_read, cache_write)
+    })?;
+    let price = pricing.effective_pricing(
+        UsageClient::from_run_id(&call.run_id).pricing_scope(),
+        call.model_hash.as_deref(),
+        &call.model_id,
+    );
+    Some(price.cost(
+        input,
+        cache_read,
+        cache_write,
+        call.output_tokens.unwrap_or_default(),
+    ))
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -694,17 +722,21 @@ impl ControlService {
     }
 
     pub async fn calls(&self, limit: i64) -> Result<Vec<CallSummary>> {
+        let pricing = self.store.pricing_settings().await?;
         let mut calls = self
             .store
             .llm_calls(limit)
             .await?
             .into_iter()
-            .map(|call| {
+            .map(|mut call| {
+                call.estimated_cost_usd = call_cost(&pricing, &call);
                 let route = call_route(&call.run_id);
+                let client = call_client(&call.run_id);
                 CallSummary {
                     call,
                     call_kind: "provider_llm",
                     route,
+                    client,
                 }
             })
             .collect::<Vec<_>>();
@@ -721,9 +753,11 @@ impl ControlService {
     }
 
     pub async fn call(&self, call_id: &str) -> Result<CallDetail> {
-        if let Some(call) = self.store.llm_call(call_id).await? {
+        if let Some(mut call) = self.store.llm_call(call_id).await? {
+            call.estimated_cost_usd = call_cost(&self.store.pricing_settings().await?, &call);
             let cursor_trace = self.cursor_trace_detail(&call.run_id).await?;
             let route = call_route(&call.run_id);
+            let client = call_client(&call.run_id);
             return Ok(CallDetail {
                 request: self.store.llm_call_request(call_id).await?,
                 response_chunks: self.store.llm_call_chunks(call_id).await?,
@@ -731,6 +765,7 @@ impl ControlService {
                     call,
                     call_kind: "provider_llm",
                     route,
+                    client,
                 },
                 cursor_trace,
             });
@@ -935,9 +970,11 @@ fn official_call(trace: CursorRunTraceSummary) -> CallSummary {
             error_kind: error.as_ref().map(|_| "cursor_official".into()),
             error_message: error,
             detailed: true,
+            estimated_cost_usd: None,
         },
         call_kind: "cursor_official",
         route: "cursor_official",
+        client: "cursor",
     }
 }
 
@@ -1095,14 +1132,29 @@ async fn openai_models_at(
     let response = apply_discovery_headers(request, custom_headers)?
         .send()
         .await?;
-    let status = response.status();
-    let body: serde_json::Value = response.json().await?;
-    if !status.is_success() {
-        return Err(Error::Provider(format!(
-            "model discovery failed ({status}): {body}"
-        )));
-    }
+    let body = discovery_body(response, "model discovery").await?;
     Ok(model_ids(body.get("data").unwrap_or(&body)))
+}
+
+/// Reads a discovery response body, keeping the HTTP status in the error when
+/// the gateway answers with something other than JSON (an HTML challenge page,
+/// for instance) so the failure names the real cause.
+async fn discovery_body(response: reqwest::Response, label: &str) -> Result<serde_json::Value> {
+    let status = response.status();
+    let text = response.text().await?;
+    match serde_json::from_str(&text) {
+        Ok(body) => {
+            if status.is_success() {
+                Ok(body)
+            } else {
+                Err(Error::Provider(format!("{label} failed ({status}): {body}")))
+            }
+        }
+        Err(_) => Err(Error::Provider(format!(
+            "{label} failed ({status}): {}",
+            text.chars().take(200).collect::<String>()
+        ))),
+    }
 }
 
 async fn anthropic_models(
@@ -1143,13 +1195,7 @@ async fn anthropic_models_at(
         let response = apply_discovery_headers(request, custom_headers)?
             .send()
             .await?;
-        let status = response.status();
-        let body: serde_json::Value = response.json().await?;
-        if !status.is_success() {
-            return Err(Error::Provider(format!(
-                "model discovery failed ({status}): {body}"
-            )));
-        }
+        let body = discovery_body(response, "model discovery").await?;
         found.extend(model_ids(body.get("data").unwrap_or(&body)));
         if body.get("has_more").and_then(serde_json::Value::as_bool) != Some(true) {
             break;
@@ -1203,9 +1249,6 @@ fn apply_discovery_headers(
         .as_object()
         .ok_or_else(|| Error::Config("custom headers must be an object".into()))?;
     for (name, value) in object {
-        if name.eq_ignore_ascii_case("user-agent") {
-            continue;
-        }
         let value = value
             .as_str()
             .ok_or_else(|| Error::Config(format!("custom header {name} must be a string")))?;

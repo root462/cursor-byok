@@ -1,0 +1,220 @@
+@use "../../styles/typography" as type;
+@use "../../styles/segmented" as segmented;
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 11px;
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+  border-radius: 9px;
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+}
+
+.pathLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: type.$font-size-xs;
+
+  code {
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--oa-code-font);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.count {
+  margin-left: auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  white-space: nowrap;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 16px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  text-align: center;
+  border: 1px dashed var(--vscode-sideBar-border);
+  border-radius: var(--oa-overlay-radius);
+
+  strong {
+    color: var(--vscode-foreground);
+    font-size: type.$font-size-base;
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 11px;
+  border-top: 1px solid var(--vscode-sideBar-border);
+
+  &:first-child { border-top: 0; }
+
+  &[data-enabled] {
+    background: color-mix(in srgb, var(--vscode-focusBorder) 6%, transparent);
+    border-radius: 8px;
+  }
+}
+
+.identity {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  small {
+    overflow: hidden;
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.nameLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.directory {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--oa-code-font);
+  font-size: type.$font-size-2xs;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.textButton {
+  padding: 4px;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  border: 0;
+  font-size: type.$font-size-xs;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) { color: var(--vscode-textLink-activeForeground); }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+}
+
+// 未纳管目录：提示性质的低对比度区块，每个目录一行。
+.unmanaged {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+  border-radius: 10px;
+
+  strong {
+    font-size: type.$font-size-xs;
+  }
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+    line-height: 1.5;
+  }
+
+  ul {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0;
+    margin: 4px 0 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: type.$font-size-xs;
+
+    code {
+      font-family: var(--oa-code-font);
+      font-size: type.$font-size-2xs;
+    }
+
+    button { margin-left: auto; }
+  }
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+// 安装方式切换：与页面工具条里的分段控件保持同一套外观。
+.modeSwitch {
+  @include segmented.segmented;
+  align-self: flex-start;
+}
+
+.pathInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}

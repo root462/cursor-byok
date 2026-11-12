@@ -11,6 +11,14 @@ use crate::{
 
 const LOCAL_NO_PROXY: &str = "localhost,127.0.0.0/8,::1";
 
+/// Providers behind Cloudflare reject requests that carry no User-Agent with a
+/// challenge page, which then fails JSON decoding instead of reporting a status.
+/// Requests that already set their own User-Agent keep it: client-level defaults
+/// only fill in headers the request does not already carry.
+fn user_agent() -> String {
+    format!("cursor-byok/{}", env!("CARGO_PKG_VERSION"))
+}
+
 #[derive(Clone)]
 pub struct NetworkClients {
     store: Store,
@@ -97,7 +105,9 @@ pub async fn client_builder(store: &Store) -> Result<reqwest::ClientBuilder> {
     let settings = store.proxy_settings_secret().await?;
     // Use the platform TLS stack for compatibility with provider gateways that
     // only offer legacy TLS 1.2 cipher suites unsupported by rustls.
-    let mut builder = reqwest::Client::builder().use_native_tls();
+    let mut builder = reqwest::Client::builder()
+        .use_native_tls()
+        .user_agent(user_agent());
     if settings.mode.is_custom() {
         builder = builder.proxy(custom_proxy(&settings)?);
     }
@@ -110,7 +120,9 @@ pub async fn client(store: &Store) -> Result<reqwest::Client> {
 
 pub async fn blocking_client_builder(store: &Store) -> Result<reqwest::blocking::ClientBuilder> {
     let settings = store.proxy_settings_secret().await?;
-    let mut builder = reqwest::blocking::Client::builder().use_native_tls();
+    let mut builder = reqwest::blocking::Client::builder()
+        .use_native_tls()
+        .user_agent(user_agent());
     if settings.mode.is_custom() {
         builder = builder.proxy(custom_proxy(&settings)?);
     }
