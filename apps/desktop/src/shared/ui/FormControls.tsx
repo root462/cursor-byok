@@ -8,6 +8,10 @@ export function TextInput(props: ComponentPropsWithRef<"input">) {
   return <input {...props} className={[styles.input, props.className].filter(Boolean).join(" ")} />;
 }
 
+export function TextArea(props: ComponentPropsWithRef<"textarea">) {
+  return <textarea {...props} className={[styles.input, styles.textarea, props.className].filter(Boolean).join(" ")} />;
+}
+
 export function SecretTextInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   const [visible, setVisible] = useState(false);
   return <div className={styles.secret}>

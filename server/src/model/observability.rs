@@ -169,6 +169,8 @@ mod llm_call {
         pub error_kind: Option<String>,
         pub error_message: Option<String>,
         pub detailed: bool,
+        /// 本次调用按来源定价估算的花费（美元）；未报告 Token 时为 `None`。
+        pub estimated_cost_usd: Option<f64>,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -268,6 +270,49 @@ mod overview {
                 .saturating_add(self.cache_read_tokens)
                 .saturating_add(self.cache_write_tokens)
                 .saturating_add(self.output_tokens)
+        }
+    }
+
+    /// 发起调用的客户端；决定调用详细里的来源，以及独立定价的作用域。
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum UsageClient {
+        Cursor,
+        Codex,
+        Claude,
+        ExternalApi,
+    }
+
+    impl UsageClient {
+        /// 由调用方的 Run ID 前缀推断来源，与 `call_route` 使用同一套约定。
+        pub fn from_run_id(run_id: &str) -> Self {
+            if run_id.starts_with("codex-desktop:") {
+                Self::Codex
+            } else if run_id.starts_with("claude-code:") {
+                Self::Claude
+            } else if run_id.starts_with("external-api:") {
+                Self::ExternalApi
+            } else {
+                Self::Cursor
+            }
+        }
+
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Cursor => "cursor",
+                Self::Codex => "codex",
+                Self::Claude => "claude",
+                Self::ExternalApi => "external_api",
+            }
+        }
+
+        /// 独立定价的作用域。外部 API 转发的是 Cursor 的模型配置，与 Cursor 共用定价。
+        pub fn pricing_scope(self) -> &'static str {
+            match self {
+                Self::Cursor | Self::ExternalApi => "cursor",
+                Self::Codex => "codex",
+                Self::Claude => "claude",
+            }
         }
     }
 

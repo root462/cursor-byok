@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Model, type ModelInput } from "../../shared/api";
+import { PromptSettingsPanel } from "../customization/PromptSettingsPanel";
+import { SkillSettingsPanel } from "../customization/SkillSettingsPanel";
 import { CursorModelCards, cursorModelGroups, type CursorModelGroup, type CursorModelGrouping } from "./CursorModelCards";
 import { CursorModelEditor, emptyCursorModelDraft, type CursorModelDraft } from "./CursorModelEditor";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
@@ -12,7 +14,7 @@ import { Icon } from "../../shared/ui/Icon";
 import { Modal } from "../../shared/ui/Modal";
 import { Switch } from "../../shared/ui/Switch";
 import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
-import { addIcon } from "../../shared/ui/icons";
+import { addIcon, promptsIcon, skillsIcon } from "../../shared/ui/icons";
 import { useMessage } from "../../shared/ui/message";
 import { PageActions } from "../../shell/PageActions";
 import { appStore, useAppStore } from "../../shared/store/appStore";
@@ -45,7 +47,9 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
   const [groupBaseUrlDraft, setGroupBaseUrlDraft] = useState("");
   const [groupApiKeyDraft, setGroupApiKeyDraft] = useState("");
   const [groupSettingsBusy, setGroupSettingsBusy] = useState(false);
-  const [confirmDisableTakeover, setConfirmDisableTakeover] = useState(false);
+  const [pendingTakeover, setPendingTakeover] = useState<"enable" | "disable" | null>(null);
+  /** 右侧工具条打开的附属面板：提示词或 Skill。 */
+  const [panel, setPanel] = useState<"prompts" | "skills" | null>(null);
   const activeModelTests = useRef(new Map<string, { testId: string; controller: AbortController; cancelling: boolean }>());
 
   const isClaude = client === "claude";
@@ -302,11 +306,14 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
       message(t("请先添加至少一个模型配置后再开启接管"));
       return;
     }
-    if (!enabled && !isClaude) {
+    if (!isClaude) {
+      // Codex 只在启动时读配置：切换接管都要退出这个进程才会生效。
+      // 开启时退出后自动重开，关闭时只退出、由用户自己决定何时再启动。
+      // 这个探测本身约 10ms；真正慢的退出与重启已经挪到后端后台任务。
       try {
         const { running } = await api.codexRunning();
         if (running) {
-          setConfirmDisableTakeover(true);
+          setPendingTakeover(enabled ? "enable" : "disable");
           return;
         }
       } catch {
@@ -374,10 +381,29 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
         </>}
       </div>
     </PageActions>
-    <PageActions><TooltipTrigger label={t("添加模型")}><button className={`${controls.iconButton} ${styles.toolbarIcon}`} aria-label={t("添加模型")} disabled={loading} onClick={openNew}><Icon icon={addIcon} size="1.1em" /></button></TooltipTrigger></PageActions>
+    <PageActions>
+      <TooltipTrigger label={t("提示词")}>
+        <button className={`${controls.iconButton} ${styles.toolbarIcon}`} aria-label={t("提示词")} onClick={() => setPanel("prompts")}>
+          <Icon icon={promptsIcon} size="1.1em" />
+        </button>
+      </TooltipTrigger>
+      <TooltipTrigger label="Skill">
+        <button className={`${controls.iconButton} ${styles.toolbarIcon}`} aria-label="Skill" onClick={() => setPanel("skills")}>
+          <Icon icon={skillsIcon} size="1.1em" />
+        </button>
+      </TooltipTrigger>
+      <span className={styles.actionDivider} aria-hidden="true" />
+      <TooltipTrigger label={t("添加模型")}><button className={`${controls.iconButton} ${styles.toolbarIcon}`} aria-label={t("添加模型")} disabled={loading} onClick={openNew}><Icon icon={addIcon} size="1.1em" /></button></TooltipTrigger>
+    </PageActions>
     <PageContent sections={[
       { key: `${client}-settings`, estimatedHeight: estimatedModelHeight + 120, content },
     ]} />
+    <Modal open={panel === "prompts"} wide fullHeight title={t("提示词")} closeLabel={t("完成")} closeVariant="primary" onClose={() => setPanel(null)}>
+      <PromptSettingsPanel client={client} />
+    </Modal>
+    <Modal open={panel === "skills"} fullHeight title="Skill" closeLabel={t("完成")} closeVariant="primary" onClose={() => setPanel(null)}>
+      <SkillSettingsPanel client={client} />
+    </Modal>
     <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={loading || savingAndTesting} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={loading || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editorTesting ? t("取消测试") : t("保存并测试")}</button>}>
       {draft && <>
         <CursorModelEditor
@@ -411,21 +437,22 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
       }
       setDeleting(null);
     }}><p>{t("确定删除这个模型吗？")}</p></ConfirmDialog>
-    {!isClaude && (
-      <ConfirmDialog
-        open={confirmDisableTakeover}
-        title={t("关闭接管 {name}？", { name: clientName })}
-        cancelLabel={t("否")}
-        confirmLabel={t("是")}
-        onCancel={() => setConfirmDisableTakeover(false)}
-        onConfirm={() => {
-          setConfirmDisableTakeover(false);
-          void applyTakeover(false, true);
-        }}
-      >
-        <p>{t("检测到 {name} 正在运行，关闭接管将会退出该应用。是否确认关闭接管并退出？", { name: clientName })}</p>
-      </ConfirmDialog>
-    )}
+    <ConfirmDialog
+      open={pendingTakeover !== null}
+      title={pendingTakeover === "disable" ? t("关闭接管 {name}？", { name: clientName }) : t("开启接管 {name}？", { name: clientName })}
+      cancelLabel={t("否")}
+      confirmLabel={t("是")}
+      onCancel={() => setPendingTakeover(null)}
+      onConfirm={() => {
+        const enabled = pendingTakeover === "enable";
+        setPendingTakeover(null);
+        void applyTakeover(enabled, true);
+      }}
+    >
+      <p>{pendingTakeover === "disable"
+        ? t("检测到 {name} 正在运行，关闭接管将会退出该应用。是否确认关闭接管并退出？", { name: clientName })
+        : t("检测到 {name} 正在运行，且它只在启动时读取配置。是否确认接管并重启该应用？", { name: clientName })}</p>
+    </ConfirmDialog>
   </>;
 }
 

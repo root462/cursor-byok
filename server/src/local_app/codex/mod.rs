@@ -68,12 +68,17 @@ impl CodexHarness {
             }
             let port = self.local_port().await;
             config::apply_codex_settings(&models, port)?;
+            // Codex 只在启动时读配置，开启接管后必须重启才能生效。
+            // 重启在后台跑，接口立即返回，开关不会卡住。
+            if terminate_process {
+                crate::local_app::restart_codex();
+            }
         } else {
             config::clear_codex_settings()?;
+            // 关闭接管：退出 Codex 让它不再走本地代理，但不自动重新打开，
+            // 由用户自己决定何时启动。退出同样在后台跑。
             if terminate_process {
-                if let Err(error) = crate::local_app::terminate_codex().await {
-                    tracing::warn!(%error, "failed to terminate Codex after disabling takeover");
-                }
+                crate::local_app::terminate_codex_async();
             }
         }
         self.status().await

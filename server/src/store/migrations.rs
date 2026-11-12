@@ -462,6 +462,15 @@ mod tests {
                     .fetch_all(&pool)
                     .await
                     .unwrap();
+            let prompt_templates_table_exists: i64 = sqlx::query_scalar(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'prompt_templates'
+                 )",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
             let checkpoint_table_exists: i64 = sqlx::query_scalar(
                 "SELECT EXISTS(
                     SELECT 1 FROM sqlite_master
@@ -493,10 +502,11 @@ mod tests {
             .unwrap();
 
             assert_eq!(checksum_after, checksum_before);
-            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
             assert_eq!(checkpoint_table_exists, 1);
             assert_eq!(argument_error_column_exists, 1);
             assert_eq!(client_models_table_exists, 1);
+            assert_eq!(prompt_templates_table_exists, 1);
         }
     }
 
@@ -512,7 +522,7 @@ mod tests {
 
         sqlx::query(
             "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time)
-             VALUES (11, 'abandoned future migration', 1, X'1234', 1000)",
+             VALUES (12, 'abandoned future migration', 1, X'1234', 1000)",
         )
         .execute(&pool)
         .await
@@ -525,7 +535,7 @@ mod tests {
                 .fetch_all(&pool)
                 .await
                 .unwrap();
-        assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     }
 
     #[test]

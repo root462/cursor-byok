@@ -7,7 +7,7 @@ use chrono::Utc;
 use sqlx::Row;
 
 use crate::{
-    model::{Overview, OverviewMetrics, TokenUsageBucket, TokenUsageGranularity},
+    model::{Overview, OverviewMetrics, TokenUsageBucket, TokenUsageGranularity, UsageClient},
     Result,
 };
 
@@ -74,6 +74,7 @@ impl Store {
             "SELECT
                 model_hash,
                 model_id,
+                {client_sql} AS client,
                 COALESCE(SUM({fresh_input}), 0) AS input_tokens,
                 COALESCE(SUM(COALESCE(cache_read_tokens, 0)), 0) AS cache_read_tokens,
                 COALESCE(SUM(COALESCE(cache_write_tokens, 0)), 0) AS cache_write_tokens,
@@ -82,8 +83,9 @@ impl Store {
              WHERE (? IS NULL OR created_at_ms >= ?)
                AND (? IS NULL OR created_at_ms < ?)
                AND (? IS NULL OR model_hash IN (SELECT value FROM json_each(?)))
-             GROUP BY model_hash, model_id",
+             GROUP BY client, model_hash, model_id",
             fresh_input = fresh_input_sql(),
+            client_sql = client_sql(),
         ))
         .bind(start_ms)
         .bind(start_ms)
@@ -106,8 +108,10 @@ impl Store {
             let row_cache_read = non_negative(row.try_get("cache_read_tokens")?);
             let row_cache_write = non_negative(row.try_get("cache_write_tokens")?);
             let row_output = non_negative(row.try_get("output_tokens")?);
+            // 同一套连接参数在不同客户端下 hash 相同，价格按来源分别查找。
+            let scope = usage_client(&row.try_get::<String, _>("client")?).pricing_scope();
 
-            let price = pricing.effective_pricing(model_hash.as_deref(), &model_id);
+            let price = pricing.effective_pricing(scope, model_hash.as_deref(), &model_id);
             input_cost_usd += (row_input as f64 / 1_000_000.0) * price.input_per_million;
             output_cost_usd += (row_output as f64 / 1_000_000.0) * price.output_per_million;
             cache_read_cost_usd +=
@@ -267,6 +271,25 @@ fn fresh_input_sql() -> &'static str {
      END"
 }
 
+/// 调用来源由 Run ID 前缀决定；这里与 `UsageClient::from_run_id` 保持同一套约定。
+fn client_sql() -> &'static str {
+    "CASE
+        WHEN run_id LIKE 'codex-desktop:%' THEN 'codex'
+        WHEN run_id LIKE 'claude-code:%' THEN 'claude'
+        WHEN run_id LIKE 'external-api:%' THEN 'external_api'
+        ELSE 'cursor'
+     END"
+}
+
+fn usage_client(client: &str) -> UsageClient {
+    match client {
+        "codex" => UsageClient::Codex,
+        "claude" => UsageClient::Claude,
+        "external_api" => UsageClient::ExternalApi,
+        _ => UsageClient::Cursor,
+    }
+}
+
 fn non_negative(value: i64) -> i64 {
     value.max(0)
 }
@@ -291,7 +314,7 @@ mod tests {
         // Configure custom pricing for "custom-hash"
         let mut models = std::collections::BTreeMap::new();
         models.insert(
-            "custom-hash".into(),
+            "cursor:custom-hash".into(),
             ModelPricing {
                 input_per_million: 10.0,
                 output_per_million: 20.0,
@@ -379,5 +402,75 @@ mod tests {
         assert!((overview.metrics.estimated_cost_usd - 58.05).abs() < 1e-4);
         // Cache cost: 3.0 (call 1) + 4.05 (call 2) = 7.05
         assert!((overview.metrics.estimated_cache_cost_usd - 7.05).abs() < 1e-4);
+    }
+
+    /// 同一套连接参数（相同 model_hash）在不同客户端下必须能分别定价。
+    #[tokio::test]
+    async fn overview_prices_the_same_hash_per_client() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        let mut models = std::collections::BTreeMap::new();
+        models.insert(
+            "cursor:shared-hash".into(),
+            ModelPricing {
+                input_per_million: 10.0,
+                output_per_million: 20.0,
+                cache_read_per_million: 0.0,
+                cache_write_per_million: 0.0,
+            },
+        );
+        models.insert(
+            "codex:shared-hash".into(),
+            ModelPricing {
+                input_per_million: 100.0,
+                output_per_million: 200.0,
+                cache_read_per_million: 0.0,
+                cache_write_per_million: 0.0,
+            },
+        );
+        store
+            .set_pricing_settings(TokenPricingSettings {
+                input_per_million: 1.0,
+                output_per_million: 2.0,
+                cache_read_per_million: 0.0,
+                cache_write_per_million: 0.0,
+                models,
+            })
+            .await
+            .unwrap();
+
+        for (call_id, run_id) in [
+            ("c1", "conversation:0"),
+            ("c2", "codex-desktop:abc"),
+            ("c3", "claude-code:abc"),
+        ] {
+            sqlx::query(
+                "INSERT INTO llm_calls (
+                    call_id, run_id, conversation_id, provider_call_index, model_hash,
+                    provider_type, provider_url, request_type, request_url, model_id,
+                    display_name, status, created_at_ms, message_count, tool_count, detailed,
+                    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+                ) VALUES (?, ?, ?, 0, 'shared-hash', 'openai', 'http://127.0.0.1', 'openai',
+                    'http://127.0.0.1/chat', 'm', 'M', 'completed', 1000, 1, 0, 0,
+                    1000000, 1000000, 0, 0)",
+            )
+            .bind(call_id)
+            .bind(run_id)
+            .bind(run_id)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        }
+
+        let overview = store
+            .overview(Some(0), Some(5000), None, None)
+            .await
+            .unwrap();
+
+        // Cursor $10+$20、Codex $100+$200，Claude 未单独定价回落到全局默认 $1+$2。
+        assert!((overview.metrics.estimated_cost_usd - 333.0).abs() < 1e-4);
+        assert_eq!(overview.metrics.llm_calls, 3);
     }
 }

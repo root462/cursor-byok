@@ -53,7 +53,7 @@ function presetRange(preset: Exclude<OverviewRangePreset, "custom">, now = new D
 
 export function HomePage() {
   const { overview, busy, models, plugins } = useAppStore();
-  const [preset, setPreset] = useState<OverviewRangePreset>("month");
+  const [preset, setPreset] = useState<OverviewRangePreset>("today");
   const [quick, setQuick] = useState<QuickPreset | null>(null);
   const [customRange, setCustomRange] = useState<TimeRange | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
@@ -174,7 +174,6 @@ export function HomePage() {
       estimatedHeight: 130,
       content: <HomeMetrics data={metrics} refreshVersion={refreshVersion} />,
     },
-
     {
       key: "activity",
       estimatedHeight: 106,

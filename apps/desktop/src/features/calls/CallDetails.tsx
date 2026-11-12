@@ -1,6 +1,7 @@
 import type { CallDetail } from "../../shared/api";
 import { JsonEditor } from "../../shared/ui/JsonEditor";
 import { Tabs, type TabItem } from "../../shared/ui/Tabs";
+import { clientLabel } from "./callColumns";
 import styles from "./CallDetails.module.scss";
 
 const show = (value: string | number | null) => value ?? "-";
@@ -13,6 +14,7 @@ export function CallDetails({ detail }: { detail: CallDetail }) {
   const fields: Array<[string, string | number]> = [
     ["Call ID", call.call_id],
     [t("调用类型"), call.call_kind === "cursor_official" ? t("Cursor 官方") : "LLM"],
+    [t("来源"), clientLabel(call.client)],
     [t("路由"), call.route === "cursor_official" ? t("Cursor 官方") : "BYOK"],
     ["Run ID", call.run_id],
     ["Conversation ID", call.conversation_id],
@@ -40,6 +42,7 @@ export function CallDetails({ detail }: { detail: CallDetail }) {
     ["Cache Read Token", show(call.cache_read_tokens)],
     ["Cache Write Token", show(call.cache_write_tokens)],
     ["Reasoning Token", show(call.reasoning_tokens)],
+    [t("估算花费"), call.estimated_cost_usd == null ? "-" : `$${call.estimated_cost_usd.toFixed(6)}`],
     [t("消息数"), call.message_count],
     [t("工具数"), call.tool_count],
     [t("详细记录"), call.detailed ? t("是") : t("否")],

@@ -2,6 +2,7 @@
 mod calls;
 mod claude_proxy;
 mod codex_proxy;
+mod customization;
 mod harness;
 mod models;
 mod overview;
@@ -222,6 +223,38 @@ pub fn api_router(service: ControlService) -> Router {
             get(settings::get_pricing_settings).put(settings::update_pricing_settings),
         )
         .route(
+            "/__byok-api__/api/harness/{client}/prompts",
+            get(customization::prompt_settings).post(customization::save_prompt),
+        )
+        .route(
+            "/__byok-api__/api/harness/{client}/prompts/{id}/enabled",
+            put(customization::set_prompt_enabled),
+        )
+        .route(
+            "/__byok-api__/api/harness/{client}/prompts/{id}",
+            axum::routing::delete(customization::delete_prompt),
+        )
+        .route(
+            "/__byok-api__/api/skills",
+            get(customization::skill_settings).post(customization::install_skill),
+        )
+        .route(
+            "/__byok-api__/api/skills/paste",
+            post(customization::paste_skill),
+        )
+        .route(
+            "/__byok-api__/api/skills/{id}",
+            axum::routing::delete(customization::uninstall_skill),
+        )
+        .route(
+            "/__byok-api__/api/skills/{id}/{client}",
+            put(customization::set_skill_enabled),
+        )
+        .route(
+            "/__byok-api__/api/skills/import/{client}",
+            post(customization::import_skills),
+        )
+        .route(
             "/__byok-api__/api/harness/cursor/runtime-status",
             get(harness::runtime_status),
         )
@@ -284,6 +317,14 @@ pub fn api_router(service: ControlService) -> Router {
         // Claude CLI transparent proxy & protocol translator
         .route("/claude/v1/messages", post(claude_proxy::messages))
         .route("/claude/messages", post(claude_proxy::messages))
+        .route(
+            "/claude/v1/messages/count_tokens",
+            post(claude_proxy::count_tokens),
+        )
+        .route(
+            "/claude/messages/count_tokens",
+            post(claude_proxy::count_tokens),
+        )
         .route("/claude/v1/models", get(claude_proxy::list_models))
         .route("/claude/models", get(claude_proxy::list_models))
         // Codex Desktop transparent proxy & protocol router

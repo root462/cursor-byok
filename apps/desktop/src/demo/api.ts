@@ -6,7 +6,9 @@ import type {
   Model,
   Overview,
   OverviewTokenUsageBucket,
+  PromptSettings,
   ProxySettings,
+  SkillSettings,
   StatisticsStorage,
   TabSettings,
 } from "../shared/api";
@@ -39,6 +41,7 @@ const calls: LlmCall[] = Array.from({ length: 24 }, (_, index) => {
   return {
     call_kind: "provider_llm",
     route: "local_byok",
+    client: index % 3 === 0 ? "codex" : index % 3 === 1 ? "claude" : "cursor",
     call_id: `mock-call-${String(index + 1).padStart(3, "0")}`,
     run_id: `mock-run-${Math.floor(index / 3) + 1}`,
     conversation_id: `mock-conversation-${Math.floor(index / 4) + 1}`,
@@ -71,6 +74,9 @@ const calls: LlmCall[] = Array.from({ length: 24 }, (_, index) => {
     error_kind: failed ? "provider_rate_limit" : null,
     error_message: failed ? "Mock provider rate limit" : null,
     detailed: true,
+    estimated_cost_usd: failed
+      ? null
+      : (4_800 + index * 337) * 3e-6 + (820 + index * 43) * 15e-6,
   };
 });
 
@@ -96,6 +102,76 @@ let proxySettings: ProxySettings = {
   has_password: false,
 };
 let tabSettings: TabSettings = { mode: "direct", address: "", api_key: "", model: "" };
+
+const demoPromptContent = {
+  claude: "始终用中文回答。\n改动代码前先说明计划，改完给出验证命令。\n",
+  codex: "Keep diffs minimal and run the project checks before finishing.\n",
+};
+
+let promptSettings: Record<"claude" | "codex", PromptSettings> = {
+  claude: {
+    client: "claude",
+    file_path: "/Users/demo/.claude/CLAUDE.md",
+    display_path: "~/.claude/CLAUDE.md",
+    file_content: demoPromptContent.claude,
+    prompts: [
+      {
+        id: "prompt-claude-default",
+        name: "默认工作约定",
+        content: demoPromptContent.claude,
+        enabled: true,
+        created_at_ms: FIXED_NOW - 86_400_000,
+        updated_at_ms: FIXED_NOW - 3_600_000,
+      },
+      {
+        id: "prompt-claude-review",
+        name: "代码评审语气",
+        content: "评审时先给结论，再列证据；不要复述完整文件。\n",
+        enabled: false,
+        created_at_ms: FIXED_NOW - 172_800_000,
+        updated_at_ms: FIXED_NOW - 172_800_000,
+      },
+    ],
+  },
+  codex: {
+    client: "codex",
+    file_path: "/Users/demo/.codex/AGENTS.md",
+    display_path: "~/.codex/AGENTS.md",
+    file_content: "",
+    prompts: [],
+  },
+};
+
+let skillSettings: SkillSettings = {
+  storage_path: "/Users/demo/Library/Application Support/cursor-byok/skills",
+  display_path: "~/Library/Application Support/cursor-byok/skills",
+  clients: [
+    {
+      client: "claude",
+      skills_path: "/Users/demo/.claude/skills",
+      display_path: "~/.claude/skills",
+      unmanaged: ["legacy-notes"],
+    },
+    {
+      client: "codex",
+      skills_path: "/Users/demo/.codex/skills",
+      display_path: "~/.codex/skills",
+      unmanaged: [],
+    },
+  ],
+  skills: [
+    {
+      id: "skill-demo-release",
+      name: "Release notes",
+      description: "把本次提交整理成发版说明",
+      directory: "release-notes",
+      enabled_claude: true,
+      enabled_codex: false,
+      installed_at_ms: FIXED_NOW - 86_400_000,
+      updated_at_ms: FIXED_NOW - 86_400_000,
+    },
+  ],
+};
 let storage: StatisticsStorage = { call_count: calls.length, trace_count: calls.length };
 
 export function installDemoApi() {
@@ -128,6 +204,58 @@ export function installDemoApi() {
     if (path === "/llm-calls") return json(calls);
     if (path.startsWith("/llm-calls/")) return json(createCallDetail(path.slice("/llm-calls/".length)));
     if (path === "/harness/cursor/status") return json(harnessStatus);
+    if (path === "/skills" && method === "GET") return json(skillSettings);
+    if (path === "/skills" && method === "POST") return json(skillSettings);
+    if (path.startsWith("/skills/import/")) return json(skillSettings);
+    if (/^\/skills\/[^/]+\/(claude|codex)$/.test(path) && method === "PUT") {
+      const [, id, client] = path.split("/");
+      skillSettings = {
+        ...skillSettings,
+        skills: skillSettings.skills.map((skill) => skill.id === id
+          ? {
+            ...skill,
+            enabled_claude: client === "claude" ? Boolean((body as { enabled?: unknown } | null)?.enabled) : skill.enabled_claude,
+            enabled_codex: client === "codex" ? Boolean((body as { enabled?: unknown } | null)?.enabled) : skill.enabled_codex,
+          }
+          : skill),
+      };
+      return json(skillSettings);
+    }
+    if (/^\/skills\/[^/]+$/.test(path) && method === "DELETE") {
+      const id = path.slice("/skills/".length);
+      skillSettings = { ...skillSettings, skills: skillSettings.skills.filter((skill) => skill.id !== id) };
+      return json(skillSettings);
+    }
+    if (/^\/harness\/(claude|codex)\/prompts$/.test(path)) {
+      const client = path.split("/")[2] as "claude" | "codex";
+      if (method === "GET") return json(promptSettings[client]);
+      const input = body as { id?: string | null; name: string; content: string; enabled: boolean };
+      const current = promptSettings[client];
+      const existing = input.id ? current.prompts.find((prompt) => prompt.id === input.id) : undefined;
+      const prompt = {
+        id: existing?.id ?? `prompt-${client}-${current.prompts.length + 1}`,
+        name: input.name,
+        content: input.content,
+        enabled: input.enabled,
+        created_at_ms: existing?.created_at_ms ?? FIXED_NOW,
+        updated_at_ms: FIXED_NOW,
+      };
+      promptSettings[client] = {
+        ...current,
+        prompts: [
+          ...current.prompts
+            .filter((item) => item.id !== prompt.id)
+            .map((item) => (prompt.enabled ? { ...item, enabled: false } : item)),
+          prompt,
+        ],
+        file_content: prompt.enabled ? prompt.content : current.file_content,
+      };
+      return json(promptSettings[client]);
+    }
+    if (/^\/harness\/(claude|codex)\/prompts\//.test(path)) {
+      const [, , client] = path.split("/");
+      return json(promptSettings[client as "claude" | "codex"]);
+    }
     if (path === "/harness/cursor/runtime-status") return json({ mismatch_count: 0, last_detected_at_ms: null });
     if (path === "/harness/cursor/ca/initialize") return json(harnessStatus);
     if (path === "/harness/cursor/enabled") {

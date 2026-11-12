@@ -25,8 +25,9 @@ use crate::{
 
 pub async fn messages(
     State(service): State<ControlService>,
-    Json(body): Json<Value>,
+    Json(mut body): Json<Value>,
 ) -> Response {
+    strip_billing_header(&mut body);
     let model_name = body
         .get("model")
         .and_then(Value::as_str)
@@ -129,6 +130,62 @@ pub async fn messages(
     }
 }
 
+/// Drops Claude Code's `x-anthropic-billing-header` line from the system prompt.
+///
+/// Claude Code prepends it for Anthropic's own accounting. Gateways that run
+/// upstream content filters treat the line as an injected protocol header and
+/// reject the whole request with `content rejected by upstream`, so the request
+/// never reaches the model. The line carries no meaning for other providers.
+fn strip_billing_header(body: &mut Value) {
+    const MARKER: &str = "x-anthropic-billing-header";
+    fn strip(text: &str) -> Option<String> {
+        if !text.starts_with(MARKER) {
+            return None;
+        }
+        Some(
+            text.split_once('\n')
+                .map_or_else(String::new, |(_, rest)| rest.to_owned()),
+        )
+    }
+    match body.get_mut("system") {
+        Some(Value::String(text)) => {
+            if let Some(rest) = strip(text) {
+                *text = rest;
+            }
+        }
+        Some(Value::Array(parts)) => {
+            if let Some(Value::String(text)) = parts.first_mut().and_then(|part| part.get_mut("text"))
+            {
+                if let Some(rest) = strip(text) {
+                    *text = rest;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+pub async fn count_tokens(Json(body): Json<Value>) -> Response {
+    let parsed = match protocol::parse(Protocol::Messages, &body) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": {
+                        "message": err.to_string(),
+                        "type": "invalid_request_error"
+                    }
+                })),
+            )
+                .into_response();
+        }
+    };
+    let input_tokens =
+        crate::model::estimate_context_tokens(&parsed.request.prompt, &parsed.request.history);
+    Json(json!({ "input_tokens": input_tokens })).into_response()
+}
+
 pub async fn list_models(
     State(service): State<ControlService>,
 ) -> Response {
@@ -171,4 +228,32 @@ pub async fn list_models(
         "object": "list"
     }))
     .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn billing_header_is_stripped_from_string_and_block_system_prompts() {
+        let header = "x-anthropic-billing-header: cc_version=2.1.322.3b5; cc_entrypoint=cli;\n";
+        let mut string_form = json!({ "system": format!("{header}You are Claude Code.") });
+        strip_billing_header(&mut string_form);
+        assert_eq!(string_form["system"], "You are Claude Code.");
+
+        let mut block_form = json!({ "system": [{"type": "text", "text": format!("{header}You are Claude Code.")}] });
+        strip_billing_header(&mut block_form);
+        assert_eq!(block_form["system"][0]["text"], "You are Claude Code.");
+    }
+
+    #[test]
+    fn prompts_without_the_header_are_untouched() {
+        let mut body = json!({ "system": "You are Claude Code." });
+        strip_billing_header(&mut body);
+        assert_eq!(body["system"], "You are Claude Code.");
+
+        let mut header_only = json!({ "system": "x-anthropic-billing-header: cc_version=1;" });
+        strip_billing_header(&mut header_only);
+        assert_eq!(header_only["system"], "");
+    }
 }

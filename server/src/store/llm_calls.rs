@@ -407,6 +407,8 @@ fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> Result<LlmCallSummary> {
         error_kind: row.try_get("error_kind")?,
         error_message: row.try_get("error_message")?,
         detailed: row.try_get("detailed")?,
+        // 由 `Store::calls_with_cost` 依据调用来源的定价补齐。
+        estimated_cost_usd: None,
     })
 }
 

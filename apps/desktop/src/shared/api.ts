@@ -124,6 +124,73 @@ export interface CodexHarnessStatus {
   current_model: string | null;
 }
 
+/** 支持提示词与 Skill 的客户端；与后端 CustomizationClient 一一对应。 */
+export type CustomizationClient = "claude" | "codex";
+
+/** 一条提示词模板；同一客户端最多一条启用。 */
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  content: string;
+  enabled: boolean;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+/** 提示词页面状态：模板列表 + 目标文件位置 + 当前文件内容。 */
+export interface PromptSettings {
+  client: CustomizationClient;
+  file_path: string;
+  display_path: string;
+  file_content: string | null;
+  prompts: PromptTemplate[];
+}
+
+export interface PromptInput {
+  id?: string | null;
+  name: string;
+  content: string;
+  enabled: boolean;
+}
+
+export interface InstalledSkill {
+  id: string;
+  name: string;
+  description: string | null;
+  directory: string;
+  enabled_claude: boolean;
+  enabled_codex: boolean;
+  installed_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface SkillClientPaths {
+  client: CustomizationClient;
+  skills_path: string;
+  display_path: string;
+  unmanaged: string[];
+}
+
+export interface SkillSettings {
+  storage_path: string;
+  display_path: string;
+  clients: SkillClientPaths[];
+  skills: InstalledSkill[];
+}
+
+export interface SkillInstallInput {
+  source_path: string;
+  enabled_claude: boolean;
+  enabled_codex: boolean;
+}
+
+/** 直接粘贴 `SKILL.md` 文本安装：目录名取自 front matter 的 `name`。 */
+export interface SkillPasteInput {
+  markdown: string;
+  enabled_claude: boolean;
+  enabled_codex: boolean;
+}
+
 export interface CursorRuntimeStatus {
   mismatch_count: number;
   last_detected_at_ms: number | null;
@@ -405,6 +472,8 @@ export function configuredPluginModels(plugins: PluginDescriptor[]): PluginModel
     plugin.providers.flatMap((provider) => provider.configured ? provider.models.filter((model) => model.enabled) : []));
 }
 
+export type UsageClient = "cursor" | "codex" | "claude" | "external_api";
+
 export interface OverviewMetrics {
   llm_calls: number;
   successful_calls: number;
@@ -441,7 +510,9 @@ export interface Overview {
 
 export interface LlmCall {
   call_kind: "provider_llm" | "cursor_official";
-  route: "local_byok" | "cursor_official";
+  route: "local_byok" | "cursor_official" | "external_api";
+  /** 发起调用的客户端。 */
+  client: UsageClient;
   call_id: string;
   run_id: string;
   conversation_id: string;
@@ -474,6 +545,8 @@ export interface LlmCall {
   error_kind: string | null;
   error_message: string | null;
   detailed: boolean;
+  /** 本次调用按来源定价估算的花费（美元）。 */
+  estimated_cost_usd: number | null;
 }
 
 export interface CallDetail {
@@ -571,6 +644,16 @@ export const api = {
   updateClientModel: (client: "claude" | "codex", hash: string, model: ModelInput) => request<Model>(`/harness/${client}/models/${encodeURIComponent(hash)}`, { method: "PUT", body: JSON.stringify(model) }),
   deleteClientModel: (client: "claude" | "codex", hash: string) => request<void>(`/harness/${client}/models/${encodeURIComponent(hash)}`, { method: "DELETE" }),
   testClientModel: (client: "claude" | "codex", hash: string, testId: string, signal?: AbortSignal) => request<ModelConnectivityResult>(`/harness/${client}/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "POST", signal }),
+  promptSettings: (client: CustomizationClient) => request<PromptSettings>(`/harness/${client}/prompts`),
+  savePrompt: (client: CustomizationClient, input: PromptInput) => request<PromptSettings>(`/harness/${client}/prompts`, { method: "POST", body: JSON.stringify(input) }),
+  setPromptEnabled: (client: CustomizationClient, id: string, enabled: boolean) => request<PromptSettings>(`/harness/${client}/prompts/${encodeURIComponent(id)}/enabled`, { method: "PUT", body: JSON.stringify({ enabled }) }),
+  deletePrompt: (client: CustomizationClient, id: string) => request<PromptSettings>(`/harness/${client}/prompts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  skills: () => request<SkillSettings>("/skills"),
+  installSkill: (input: SkillInstallInput) => request<SkillSettings>("/skills", { method: "POST", body: JSON.stringify(input) }),
+  pasteSkill: (input: SkillPasteInput) => request<SkillSettings>("/skills/paste", { method: "POST", body: JSON.stringify(input) }),
+  importSkill: (client: CustomizationClient, directory: string, enabledClaude: boolean, enabledCodex: boolean) => request<SkillSettings>(`/skills/import/${client}`, { method: "POST", body: JSON.stringify({ directory, enabled_claude: enabledClaude, enabled_codex: enabledCodex }) }),
+  setSkillEnabled: (id: string, client: CustomizationClient, enabled: boolean) => request<SkillSettings>(`/skills/${encodeURIComponent(id)}/${client}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
+  uninstallSkill: (id: string) => request<SkillSettings>(`/skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
   claudeHarness: () => request<ClaudeHarnessStatus>("/harness/claude/status"),
   setClaudeEnabled: (enabled: boolean) => request<ClaudeHarnessStatus>("/harness/claude/enabled", { method: "PUT", body: JSON.stringify({ enabled }) }),
   codexHarness: () => request<CodexHarnessStatus>("/harness/codex/status"),
@@ -615,6 +698,12 @@ export const api = {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中复制到系统剪贴板"));
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
     await writeText(text);
+  },
+  /** 打开系统文件夹选择框；用户取消返回 `null`。 */
+  pickDirectory: async (): Promise<string | null> => {
+    if (!packagedDesktop) throw new Error(t("请在桌面应用中选择文件夹"));
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke<string | null>("pick_directory")) ?? null;
   },
   setCursorEnabled: (enabled: boolean, terminateProcess?: boolean) => request<CursorHarnessStatus>("/harness/cursor/enabled", { method: "PUT", body: JSON.stringify({ enabled, terminate_process: Boolean(terminateProcess) }) }),
   calls: () => request<LlmCall[]>("/llm-calls?limit=200"),

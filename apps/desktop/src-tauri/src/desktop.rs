@@ -40,6 +40,17 @@ struct DesktopRuntime {
     server_addr: std::net::SocketAddr,
 }
 
+/// 选择一个本地文件夹，返回绝对路径；用户取消时返回 `None`。
+/// Skill 是整目录安装，所以这里只要目录，不要文件。
+#[tauri::command]
+async fn pick_directory() -> Option<String> {
+    rfd::AsyncFileDialog::new()
+        .set_title("Select Skill directory")
+        .pick_folder()
+        .await
+        .map(|handle| handle.path().to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn open_terminal_with_command(command: String) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
@@ -386,7 +397,7 @@ fn create_main_window(
         .expect("local frontend URL");
     let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::External(url))
         .title("Cursor BYOK")
-        .inner_size(820.0, 558.0)
+        .inner_size(972.0, 593.0)
         .min_inner_size(820.0, 558.0)
         .center()
         .background_color(Color(20, 20, 20, 255))
@@ -454,7 +465,7 @@ pub fn run() -> ExitCode {
     let started_by_autostart = std::env::args_os().any(|arg| arg == AUTOSTART_ARG);
 
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open_terminal_with_command,])
+        .invoke_handler(tauri::generate_handler![open_terminal_with_command, pick_directory])
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if !args.iter().any(|arg| arg == AUTOSTART_ARG) {
                 let _ = open_main_window(app);
