@@ -5,6 +5,7 @@ import { Button } from "../../shared/ui/Button";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { Modal } from "../../shared/ui/Modal";
 import { useMessage } from "../../shared/ui/message";
+import { VirtualList } from "../../shared/virtual/VirtualList";
 import styles from "./VersionHistoryModal.module.scss";
 
 function parseSemver(v: string): number[] {
@@ -78,19 +79,22 @@ export function VersionHistoryModal({
         open={open}
         title={t("版本历史与回退")}
         wide
+        fullHeight
+        scrollable={false}
         closeLabel={t("关闭")}
         onClose={onClose}
-      >
-        <div className={styles.header}>
-          <div className={styles.currentVersion}>
-            {t("当前版本：")}
-            <strong>v{currentVersion}</strong>
+        banner={
+          <div className={styles.header}>
+            <div className={styles.currentVersion}>
+              {t("当前版本：")}
+              <strong>v{currentVersion}</strong>
+            </div>
+            <Button size="small" disabled={loadingHistory || isSwitching} onClick={() => void refresh()}>
+              {loadingHistory ? t("加载中…") : t("刷新列表")}
+            </Button>
           </div>
-          <Button size="small" disabled={loadingHistory || isSwitching} onClick={() => void refresh()}>
-            {loadingHistory ? t("加载中…") : t("刷新列表")}
-          </Button>
-        </div>
-
+        }
+      >
         {loadingHistory && !history && (
           <div className={styles.stateBox}>
             <span>{t("正在获取历史版本列表…")}</span>
@@ -113,8 +117,15 @@ export function VersionHistoryModal({
         )}
 
         {history && history.length > 0 && (
-          <div className={styles.releaseList}>
-            {history.map((release) => {
+          <VirtualList
+            items={history}
+            itemKey="tagName"
+            className={styles.releaseList}
+            contentClassName={styles.releaseListContent}
+            itemGap={12}
+            estimatedItemHeight={76}
+          >
+            {(release) => {
               const diff = compareSemver(release.version, currentVersion);
               const isCurrent = diff === 0;
               const isNewer = diff > 0;
@@ -145,7 +156,7 @@ export function VersionHistoryModal({
                       </span>
                     </div>
 
-                    <div>
+                    <div className={styles.releaseActions}>
                       {isCurrent ? (
                         <Button size="small" disabled>
                           {t("当前运行中")}
@@ -166,16 +177,10 @@ export function VersionHistoryModal({
                       )}
                     </div>
                   </div>
-
-                  {release.body && (
-                    <div className={styles.releaseBody}>
-                      {release.body}
-                    </div>
-                  )}
                 </div>
               );
-            })}
-          </div>
+            }}
+          </VirtualList>
         )}
       </Modal>
 
