@@ -14,6 +14,8 @@ type ModalProps = {
   wide?: boolean;
   compact?: boolean;
   fullHeight?: boolean;
+  /** Disable the built-in viewport when the body owns its scrolling (for example, a VirtualList). */
+  scrollable?: boolean;
   square?: boolean;
   role?: "dialog" | "alertdialog";
   ariaDescribedBy?: string;
@@ -50,7 +52,7 @@ const CLOSE_ANIMATION_MS = 170;
    否则按一次键会连列表一起关掉。 */
 const openDialogs: string[] = [];
 
-export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, square, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), closeVariant = "secondary", submitLabel = t("保存"), submitVariant = "primary", submitDisabled = false }: ModalProps) {
+export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, scrollable = true, square, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), closeVariant = "secondary", submitLabel = t("保存"), submitVariant = "primary", submitDisabled = false }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(onClose);
@@ -127,7 +129,9 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
     <div id={id} ref={dialog} className={[styles.dialog, wide && styles.wide, compact && styles.compact, fullHeight && styles.fullHeight, square && styles.square].filter(Boolean).join(" ")} role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={ariaDescribedBy} tabIndex={-1}>
       <header id={titleId}>{title}</header>
       {banner && <div className={styles.banner}>{banner}</div>}
-      <ScrollableContent alwaysShowVertical className={styles.body} contentClassName={styles.bodyContent}>{children}</ScrollableContent>
+      {scrollable
+        ? <ScrollableContent alwaysShowVertical className={styles.body} contentClassName={styles.bodyContent}>{children}</ScrollableContent>
+        : <div className={`${styles.body} ${styles.customBody}`}>{children}</div>}
       <footer>
         {secondaryAction}
         {onClose && <button type="button" className={[controls[closeVariant], styles.footerButton].filter(Boolean).join(" ")} disabled={busy} onClick={onClose}>{closeLabel}</button>}

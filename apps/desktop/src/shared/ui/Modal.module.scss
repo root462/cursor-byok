@@ -276,3 +276,10 @@
 .bodyContent {
   padding: 18px;
 }
+
+.customBody {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px;
+}
