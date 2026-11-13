@@ -11,7 +11,9 @@
     border-top: 1px solid var(--vscode-widget-border);
   }
 
-  > div {
+  > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
     display: grid;
     gap: 5px;
   }
@@ -32,7 +34,13 @@
 
 .actionGroup {
   display: flex !important;
+  flex: 0 0 auto;
   flex-direction: row !important;
   align-items: center;
   gap: 8px;
+
+  > button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }

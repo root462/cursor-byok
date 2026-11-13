@@ -41,9 +41,9 @@
 .selectorRow {
   min-width: 0;
   min-height: 38px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   padding-bottom: 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
@@ -53,11 +53,16 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 380px;
-  max-width: 78%;
+  width: 100%;
+  min-width: 0;
 
   > :first-child {
     flex: 0 0 140px;
+  }
+
+  > :nth-child(2) {
+    flex: 1 1 0;
+    min-width: 0;
   }
 }
 
@@ -109,12 +114,15 @@
 @media (max-width: 680px) {
   .control { width: 68%; }
   .selectorRow {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
     gap: 8px;
   }
   .modelPicker {
     max-width: 100%;
-    justify-content: space-between;
+    flex-wrap: wrap;
+
+    > :nth-child(2) {
+      flex: 1 1 200px;
+    }
   }
 }
