@@ -29,6 +29,36 @@ pub use process::{
     terminate_cursor,
 };
 
+/// 本地管理服务实际监听的地址。
+///
+/// 端口可能来自用户设置，也可能因为被占用而回退到随机端口，所以只有
+/// `App::bind` 之后才是确定的。Claude/Codex 写入的网关地址必须来自这里，
+/// 不能各自假设默认端口。
+#[derive(Clone, Default)]
+pub struct ServiceAddr {
+    address: Arc<RwLock<Option<SocketAddr>>>,
+}
+
+impl ServiceAddr {
+    pub fn set(&self, address: SocketAddr) {
+        *self.address.write() = Some(address);
+    }
+
+    /// 面向本地客户端的网关基址，如 `http://127.0.0.1:4000`。
+    ///
+    /// 监听在通配地址时，客户端仍然要走回环地址。
+    pub fn gateway_base(&self) -> Option<String> {
+        self.address.read().map(|address| {
+            let ip = if address.ip().is_unspecified() {
+                std::net::Ipv4Addr::LOCALHOST.into()
+            } else {
+                address.ip()
+            };
+            format!("http://{ip}:{}", address.port())
+        })
+    }
+}
+
 pub(crate) fn proxy_host_allowed(host: &str) -> bool {
     proxy::is_cursor_host(host)
 }
@@ -254,4 +284,34 @@ impl CursorHarness {
 async fn apply_cursor_configuration(proxy_url: &str) -> Result<()> {
     account::inject_if_missing().await?;
     settings::write_proxy_settings(proxy_url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_address_is_unknown_until_bound() {
+        assert_eq!(ServiceAddr::default().gateway_base(), None);
+    }
+
+    #[test]
+    fn gateway_base_uses_the_actual_bound_port() {
+        let address = ServiceAddr::default();
+        address.set("127.0.0.1:4000".parse().unwrap());
+        assert_eq!(
+            address.gateway_base().as_deref(),
+            Some("http://127.0.0.1:4000")
+        );
+    }
+
+    #[test]
+    fn gateway_base_maps_wildcard_binds_to_loopback() {
+        let address = ServiceAddr::default();
+        address.set("0.0.0.0:4321".parse().unwrap());
+        assert_eq!(
+            address.gateway_base().as_deref(),
+            Some("http://127.0.0.1:4321")
+        );
+    }
 }

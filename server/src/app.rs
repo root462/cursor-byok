@@ -25,6 +25,8 @@ pub struct App {
     router: axum::Router,
     registry: TransportRegistry,
     harness: CursorHarness,
+    control: control::ControlService,
+    service_addr: crate::local_app::ServiceAddr,
     store: Store,
 }
 
@@ -71,8 +73,10 @@ impl App {
             plugins.clone(),
             crate::config::managed_data_dir()?.join("rules"),
         );
+        let service_addr = crate::local_app::ServiceAddr::default();
         let control = control::ControlService::new(
             store.clone(),
+            service_addr.clone(),
             provider,
             plugin_runtime,
             plugins,
@@ -94,6 +98,8 @@ impl App {
             router,
             registry,
             harness,
+            control,
+            service_addr,
             store,
             config,
         })
@@ -107,9 +113,11 @@ impl App {
     pub async fn bind(&self) -> Result<TcpListener> {
         let requested = self.config.listen_addr;
         let listener = bind_service_listener(requested, self.config.use_persisted_ports).await?;
-        self.store
-            .set_service_port(listener.local_addr()?.port())
-            .await?;
+        let address = listener.local_addr()?;
+        self.store.set_service_port(address.port()).await?;
+        self.service_addr.set(address);
+        // 监听端口此时才确定，Claude / Codex 写出的网关地址必须以它为准。
+        self.control.spawn_client_harness_sync();
         Ok(listener)
     }
 

@@ -7,47 +7,56 @@ use crate::{model::ModelConfig, Error, Result};
 
 use super::paths::get_claude_settings_path;
 
-pub fn is_claude_settings_applied(models: &[ModelConfig]) -> bool {
-    let path = get_claude_settings_path();
-    if !path.exists() {
-        return false;
-    }
-    let Ok(content) = fs::read_to_string(&path) else {
-        return false;
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&content) else {
-        return false;
-    };
+/// 写进 `settings.json` 的本地占位 token，同时作为「配置由本应用接管」的标记。
+const LOCAL_TOKEN: &str = "cursor-byok-local";
 
-    if let Some(first) = models.first() {
-        let matches_model = value
-            .get("primaryModel")
-            .and_then(Value::as_str)
-            .map(|m| m == first.model_id)
-            .unwrap_or(false)
-            || value
-                .get("model")
-                .and_then(Value::as_str)
-                .map(|m| m == first.model_id)
-                .unwrap_or(false);
-        let matches_base = value
-            .get("env")
-            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
-            .and_then(Value::as_str)
-            .map(|url| {
-                let trimmed = url.trim_end_matches('/');
-                trimmed == "http://127.0.0.1:3000/claude"
-                    || trimmed == first.base_url.trim_end_matches('/')
-            })
-            .unwrap_or(false);
-        let has_picker = value.get("modelPicker").is_some();
-        matches_model || matches_base || has_picker
-    } else {
-        false
-    }
+/// 配置是否仍由本应用接管。
+///
+/// 与端口无关：用户改了服务端口后，settings.json 里的旧地址依然算「接管中」，
+/// 只是需要按新端口重写。用本地 token 作为管理签名。
+pub fn is_claude_managed() -> bool {
+    let Some(value) = read_settings() else {
+        return false;
+    };
+    value
+        .get("env")
+        .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
+        .and_then(Value::as_str)
+        .is_some_and(|token| token == LOCAL_TOKEN)
 }
 
-pub fn build_claude_settings(existing: &Value, models: &[ModelConfig]) -> Value {
+/// 接管中，且写入的网关地址就是当前实际监听端口。
+pub fn is_claude_settings_applied(models: &[ModelConfig], gateway_base: &str) -> bool {
+    if models.is_empty() {
+        return false;
+    }
+    let Some(value) = read_settings() else {
+        return false;
+    };
+    is_claude_managed() && base_url_matches(&value, gateway_base)
+}
+
+fn base_url_matches(value: &Value, gateway_base: &str) -> bool {
+    let expected = format!("{gateway_base}/claude");
+    value
+        .get("env")
+        .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
+        .and_then(Value::as_str)
+        .map(|url| url.trim_end_matches('/') == expected)
+        .unwrap_or(false)
+}
+
+fn read_settings() -> Option<Value> {
+    let path = get_claude_settings_path();
+    let content = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+pub fn build_claude_settings(
+    existing: &Value,
+    models: &[ModelConfig],
+    gateway_base: &str,
+) -> Value {
     let mut root: Value = existing.clone();
     if !root.is_object() {
         root = json!({});
@@ -113,12 +122,15 @@ pub fn build_claude_settings(existing: &Value, models: &[ModelConfig]) -> Value 
         }
         let env_obj = root_obj.get_mut("env").unwrap().as_object_mut().unwrap();
 
-        // Always route through local transparent proxy at http://127.0.0.1:3000/claude
+        // Always route through the local transparent proxy at {gateway_base}/claude.
         // This ensures OpenAI-protocol models (e.g. DeepSeek) are converted to Anthropic Messages,
         // multi-model switching in `/model` routes to respective upstream providers,
         // and calls are logged in the Cursor BYOK dashboard.
-        env_obj.insert("ANTHROPIC_BASE_URL".into(), json!("http://127.0.0.1:3000/claude"));
-        env_obj.insert("ANTHROPIC_AUTH_TOKEN".into(), json!("cursor-byok-local"));
+        env_obj.insert(
+            "ANTHROPIC_BASE_URL".into(),
+            json!(format!("{gateway_base}/claude")),
+        );
+        env_obj.insert("ANTHROPIC_AUTH_TOKEN".into(), json!(LOCAL_TOKEN));
 
         // Do not pin ANTHROPIC_MODEL in env, otherwise Claude Code prints:
         // "ANTHROPIC_MODEL is set to ... - new sessions use that while it is set"
@@ -221,7 +233,7 @@ pub fn strip_claude_settings(existing: &Value) -> Value {
     root
 }
 
-pub fn apply_claude_settings(models: &[ModelConfig]) -> Result<()> {
+pub fn apply_claude_settings(models: &[ModelConfig], gateway_base: &str) -> Result<()> {
     let path = get_claude_settings_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -236,7 +248,7 @@ pub fn apply_claude_settings(models: &[ModelConfig]) -> Result<()> {
         json!({})
     };
 
-    let next = build_claude_settings(&root, models);
+    let next = build_claude_settings(&root, models, gateway_base);
     let serialized = serde_json::to_string_pretty(&next)
         .map_err(|e| Error::Store(format!("failed to serialize claude settings: {e}")))?;
     fs::write(&path, serialized)
@@ -302,7 +314,11 @@ mod tests {
             test_model("deepseek-v4.1-flash", "DeepSeek V4.1 Flash", ModelType::OpenAi),
         ];
 
-        let result = build_claude_settings(&json!({ "theme": "dark" }), &models);
+        let result = build_claude_settings(
+            &json!({ "theme": "dark" }),
+            &models,
+            "http://127.0.0.1:3000",
+        );
 
         assert_eq!(result["theme"], "dark");
         assert_eq!(result["primaryModel"], "claude-3-7-sonnet");
@@ -327,5 +343,19 @@ mod tests {
         assert!(stripped.get("modelPicker").is_none());
         assert!(stripped.get("primaryModel").is_none());
         assert!(stripped["env"].get("ANTHROPIC_BASE_URL").is_none());
+    }
+
+    #[test]
+    fn base_url_follows_the_configured_service_port() {
+        let models = vec![test_model("deepseek-chat", "DeepSeek", ModelType::OpenAi)];
+
+        let result = build_claude_settings(&json!({}), &models, "http://127.0.0.1:4000");
+
+        assert_eq!(
+            result["env"]["ANTHROPIC_BASE_URL"],
+            "http://127.0.0.1:4000/claude"
+        );
+        assert!(base_url_matches(&result, "http://127.0.0.1:4000"));
+        assert!(!base_url_matches(&result, "http://127.0.0.1:3000"));
     }
 }

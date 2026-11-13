@@ -9,26 +9,38 @@ use crate::{model::ModelConfig, Error, Result};
 use super::paths::{get_codex_catalog_path, get_codex_config_dir, get_codex_config_path};
 
 const CATALOG_FILENAME: &str = "cursor-byok-model-catalog.json";
+/// 写进 `config.toml` 的本地占位 token，同时作为「配置由本应用接管」的标记。
+const MANAGED_TOKEN: &str = "cursor-byok-local";
 
-pub fn is_codex_settings_applied() -> bool {
-    let config_path = get_codex_config_path();
+/// 配置是否仍由本应用接管。与端口无关：用户改了服务端口后，config.toml 里的
+/// 旧地址依然算「接管中」，只是需要按新端口重写。用本地 bearer token 作为管理签名。
+pub fn is_codex_managed() -> bool {
+    read_config_text()
+        .map(|text| text.contains(MANAGED_TOKEN) && text.contains("model_provider"))
+        .unwrap_or(false)
+}
+
+/// 接管中，且写入的网关地址就是当前实际监听端口。
+pub fn is_codex_settings_applied(gateway_base: &str) -> bool {
     let catalog_path = get_codex_catalog_path();
-    if !config_path.exists() || !catalog_path.exists() {
-        return false;
-    }
-    let Ok(content) = fs::read_to_string(&config_path) else {
+    let Some(text) = read_config_text() else {
         return false;
     };
-    content.contains(CATALOG_FILENAME)
-        || content.contains("model_provider = \"custom\"")
-        || content.contains("model_provider=\"custom\"")
+    if !catalog_path.exists() || !is_codex_managed() {
+        return false;
+    }
+    text.contains(&format!("{gateway_base}/codex"))
+}
+
+fn read_config_text() -> Option<String> {
+    fs::read_to_string(get_codex_config_path()).ok()
 }
 
 pub(crate) fn patch_codex_config(
     doc: &mut DocumentMut,
     catalog_path: &Path,
     models: &[ModelConfig],
-    port: u16,
+    gateway_base: &str,
 ) {
     doc["model_provider"] = value("custom");
     doc["model_catalog_json"] = value(catalog_path.to_string_lossy().as_ref());
@@ -62,11 +74,11 @@ pub(crate) fn patch_codex_config(
 
         // Route all models through Cursor BYOK local gateway.
         // This enables simultaneous support for any combination of providers (DeepSeek, GLM, Claude, etc.)
-        let base_url = format!("http://127.0.0.1:{port}/codex");
+        let base_url = format!("{gateway_base}/codex");
         custom_table["name"] = value("Cursor BYOK");
         custom_table["base_url"] = value(base_url.as_str());
         custom_table["wire_api"] = value("responses");
-        custom_table["experimental_bearer_token"] = value("cursor-byok-local");
+        custom_table["experimental_bearer_token"] = value(MANAGED_TOKEN);
     }
 }
 
@@ -144,7 +156,7 @@ fn build_codex_catalog_entry(m: &ModelConfig, index: usize) -> serde_json::Value
     })
 }
 
-pub fn apply_codex_settings(models: &[ModelConfig], port: u16) -> Result<()> {
+pub fn apply_codex_settings(models: &[ModelConfig], gateway_base: &str) -> Result<()> {
     let config_dir = get_codex_config_dir();
     fs::create_dir_all(&config_dir)
         .map_err(|e| Error::Store(format!("failed to create codex config dir: {e}")))?;
@@ -173,7 +185,7 @@ pub fn apply_codex_settings(models: &[ModelConfig], port: u16) -> Result<()> {
         DocumentMut::new()
     };
 
-    patch_codex_config(&mut doc, &catalog_path, models, port);
+    patch_codex_config(&mut doc, &catalog_path, models, gateway_base);
 
     fs::write(&config_path, doc.to_string())
         .map_err(|e| Error::Store(format!("failed to write codex config.toml: {e}")))?;
@@ -240,7 +252,7 @@ mod tests {
         let catalog_path = PathBuf::from("/Users/alice/.codex/cursor-byok-model-catalog.json");
         let model = sample_model();
 
-        patch_codex_config(&mut doc, &catalog_path, &[model], 3000);
+        patch_codex_config(&mut doc, &catalog_path, &[model], "http://127.0.0.1:3000");
 
         assert_eq!(
             doc["model_catalog_json"].as_str(),
@@ -269,6 +281,24 @@ mod tests {
         assert!(!doc.contains_key("model_catalog_json"));
         assert!(!doc.contains_key("model_provider"));
         assert!(doc.get("model_providers").and_then(|p| p.get("custom")).is_none());
+    }
+
+    #[test]
+    fn base_url_follows_the_configured_service_port() {
+        let mut doc = DocumentMut::new();
+        let catalog_path = PathBuf::from("/Users/alice/.codex/cursor-byok-model-catalog.json");
+
+        patch_codex_config(
+            &mut doc,
+            &catalog_path,
+            &[sample_model()],
+            "http://127.0.0.1:4000",
+        );
+
+        assert_eq!(
+            doc["model_providers"]["custom"]["base_url"].as_str(),
+            Some("http://127.0.0.1:4000/codex")
+        );
     }
 
     #[test]

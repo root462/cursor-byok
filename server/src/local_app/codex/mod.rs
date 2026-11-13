@@ -6,6 +6,8 @@ use serde::Serialize;
 
 use crate::{store::Store, Error, Result};
 
+use super::ServiceAddr;
+
 pub use paths::{get_codex_catalog_path, get_codex_config_dir, get_codex_config_path};
 
 #[derive(Clone, Debug, Serialize)]
@@ -21,11 +23,15 @@ pub struct CodexHarnessStatus {
 #[derive(Clone)]
 pub struct CodexHarness {
     store: Store,
+    service_addr: ServiceAddr,
 }
 
 impl CodexHarness {
-    pub fn new(store: Store) -> Self {
-        Self { store }
+    pub fn new(store: Store, service_addr: ServiceAddr) -> Self {
+        Self {
+            store,
+            service_addr,
+        }
     }
 
     pub async fn status(&self) -> Result<CodexHarnessStatus> {
@@ -33,7 +39,10 @@ impl CodexHarness {
         let config_path = get_codex_config_path();
         let catalog_path = get_codex_catalog_path();
         let installed = config_path.parent().map(|p| p.exists()).unwrap_or(false);
-        let settings_applied = config::is_codex_settings_applied();
+        let settings_applied = match self.service_addr.gateway_base() {
+            Some(base) => config::is_codex_settings_applied(&base),
+            None => false,
+        };
         let current_model = models.first().map(|m| m.model_id.clone());
 
         Ok(CodexHarnessStatus {
@@ -46,28 +55,19 @@ impl CodexHarness {
         })
     }
 
-    async fn local_port(&self) -> u16 {
-        self.store
-            .port_settings()
-            .await
-            .map(|s| if s.service_port == 0 { 3000 } else { s.service_port })
-            .unwrap_or(3000)
-    }
-
     pub async fn set_enabled(
         &self,
         enabled: bool,
         terminate_process: bool,
     ) -> Result<CodexHarnessStatus> {
-        let models = self.store.client_models("codex").await?;
         if enabled {
+            let models = self.store.client_models("codex").await?;
             if models.is_empty() {
                 return Err(Error::Config(
                     "add at least one Codex model before applying settings".into(),
                 ));
             }
-            let port = self.local_port().await;
-            config::apply_codex_settings(&models, port)?;
+            config::apply_codex_settings(&models, &self.ready_base()?)?;
             // Codex 只在启动时读配置，开启接管后必须重启才能生效。
             // 重启在后台跑，接口立即返回，开关不会卡住。
             if terminate_process {
@@ -85,11 +85,31 @@ impl CodexHarness {
     }
 
     pub async fn sync_if_applied(&self) -> Result<()> {
+        let Some(base) = self.service_addr.gateway_base() else {
+            return Ok(());
+        };
+        // 接管中一律重写：模型增删改也要同步到 config.toml 和 catalog。
+        if !config::is_codex_managed() {
+            return Ok(());
+        }
         let models = self.store.client_models("codex").await?;
-        if config::is_codex_settings_applied() {
-            let port = self.local_port().await;
-            config::apply_codex_settings(&models, port)?;
+        if models.is_empty() {
+            return Ok(());
+        }
+        // 端口变化才算「旧配置已失效」。Codex 只在启动时读配置，正在跑的
+        // 进程还拿着旧地址，必须重启一次才能连上新端口；纯模型改动不需要。
+        let port_changed = !config::is_codex_settings_applied(&base);
+        config::apply_codex_settings(&models, &base)?;
+        if port_changed {
+            crate::local_app::restart_codex();
         }
         Ok(())
+    }
+
+    /// 网关地址只有在服务绑定监听端口后才确定,不能假设默认端口。
+    fn ready_base(&self) -> Result<String> {
+        self.service_addr
+            .gateway_base()
+            .ok_or_else(|| Error::Config("local management service is not ready".into()))
     }
 }
