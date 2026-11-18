@@ -17,10 +17,13 @@ use crate::{
 
 use super::{OutputHub, TransportAdmission, TransportLifecycle};
 
+/// Parent identity Cursor attaches to a subagent request. The two headers are
+/// optional independently: Windows Cursor may send only the parent tool call id
+/// or only the parent request id. At least one must be present.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransportParent {
-    pub request_id: String,
-    pub tool_call_id: String,
+    pub request_id: Option<String>,
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -81,8 +84,11 @@ impl TransportHandle {
     }
 
     pub fn set_parent(&self, parent: TransportParent) -> Result<()> {
-        if parent.request_id.is_empty() || parent.tool_call_id.is_empty() {
-            return Err(Error::Protocol("Cursor parent ids are required".into()));
+        if (parent.request_id.is_none() && parent.tool_call_id.is_none())
+            || parent.request_id.as_ref().is_some_and(String::is_empty)
+            || parent.tool_call_id.as_ref().is_some_and(String::is_empty)
+        {
+            return Err(Error::Protocol("Cursor parent ids must not be empty".into()));
         }
         if self.parent.get().is_some_and(|current| current != &parent) {
             return Err(Error::Protocol(format!(

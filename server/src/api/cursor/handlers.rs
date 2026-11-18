@@ -452,16 +452,15 @@ async fn buffered(request: Request<Body>) -> Result<(axum::http::request::Parts,
 fn parent_headers(headers: &HeaderMap) -> Result<Option<TransportParent>> {
     let request_id = header_text(headers, "x-parent-request-id")?;
     let tool_call_id = header_text(headers, "x-parent-agent-tool-call-id")?;
-    match (request_id, tool_call_id) {
-        (None, None) => Ok(None),
-        (Some(request_id), Some(tool_call_id)) => Ok(Some(TransportParent {
-            request_id: request_id.into(),
-            tool_call_id: tool_call_id.into(),
-        })),
-        _ => Err(crate::Error::Protocol(
-            "Cursor subagent request must include both parent headers".into(),
-        )),
+    if request_id.is_none() && tool_call_id.is_none() {
+        return Ok(None);
     }
+    // Cursor emits these headers independently: a subagent can carry only its
+    // parent tool call id, or only its parent request id.
+    Ok(Some(TransportParent {
+        request_id: request_id.map(str::to_owned),
+        tool_call_id: tool_call_id.map(str::to_owned),
+    }))
 }
 
 fn header_text<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>> {

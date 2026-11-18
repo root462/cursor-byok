@@ -423,19 +423,18 @@ fn action(request: &pb::AgentRunRequest) -> Result<ActionProjection> {
     };
     match action {
         pb::conversation_action::Action::UserMessageAction(action) => {
-            let user = action.user_message.as_ref().ok_or_else(|| {
+            let mut user = action.user_message.clone().ok_or_else(|| {
                 Error::Protocol("Cursor user message action has no UserMessage".into())
             })?;
+            // Windows Cursor sends subagent kickoff messages without a
+            // message_id; derive one from the content so retries stay
+            // idempotent instead of failing the whole request.
+            break_messages::ensure_message_id(&mut user);
             let mode = if user.mode == pb::AgentMode::Unspecified as i32 {
                 conversation_mode.unwrap_or(user.mode)
             } else {
                 user.mode
             };
-            if user.message_id.is_empty() {
-                return Err(Error::Protocol(
-                    "Cursor user message action has no message_id".into(),
-                ));
-            }
             if user.text.trim() == "/summarize" {
                 return Ok(ActionProjection {
                     mode,

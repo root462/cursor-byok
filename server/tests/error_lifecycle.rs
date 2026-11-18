@@ -601,8 +601,8 @@ async fn parent_request_does_not_need_to_resolve_to_an_active_run() {
     assert_run_starts_without_parent_dependency(
         "finished-parent-request",
         Some(TransportParent {
-            request_id: "already-finished-parent".into(),
-            tool_call_id: "original-tool-call".into(),
+            request_id: Some("already-finished-parent".into()),
+            tool_call_id: Some("original-tool-call".into()),
         }),
         None,
     )
@@ -617,6 +617,246 @@ async fn subagent_type_does_not_require_parent_metadata() {
         Some("generalPurpose"),
     )
     .await;
+}
+
+#[tokio::test]
+async fn subagent_with_only_parent_tool_call_id_starts_and_completes() {
+    assert_run_starts_without_parent_dependency(
+        "tool-call-only-subagent",
+        Some(TransportParent {
+            request_id: None,
+            tool_call_id: Some("parent-task-call".into()),
+        }),
+        Some("generalPurpose"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn subagent_with_only_parent_request_id_starts_and_completes() {
+    assert_run_starts_without_parent_dependency(
+        "request-only-subagent",
+        Some(TransportParent {
+            request_id: Some("parent-request".into()),
+            tool_call_id: None,
+        }),
+        Some("generalPurpose"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn parent_with_no_ids_is_rejected() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let registry = registry_for(store, &fake_provider::FakeProvider::default());
+    let handle = registry.get_or_create("empty-parent").await.unwrap();
+    let error = handle
+        .set_parent(TransportParent {
+            request_id: None,
+            tool_call_id: None,
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("must not be empty"), "{error}");
+}
+
+#[tokio::test]
+async fn subagent_kickoff_without_message_id_starts_and_completes() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(vec![
+        ModelEvent::Start {
+            model_call_id: "idless-subagent-call".into(),
+        },
+        ModelEvent::TextStart,
+        ModelEvent::TextDelta("subagent finished".into()),
+        ModelEvent::TextEnd,
+        ModelEvent::Done(FinishReason::Stop),
+    ]);
+    let conversation = "idless-subagent-conversation";
+    let terminal = run_idless_subagent(
+        &registry_for(store.clone(), &provider),
+        "idless-subagent-request",
+        Some(TransportParent {
+            request_id: None,
+            tool_call_id: Some("parent-task-call".into()),
+        }),
+        "explore the repository",
+        conversation,
+    )
+    .await;
+
+    assert!(terminal.get("error").is_none(), "{terminal}");
+    assert_eq!(provider.requests().len(), 1);
+    let row: (String, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT run_kind, parent_run_id, parent_tool_call_id FROM runs WHERE cursor_request_id = ?",
+    )
+    .bind("idless-subagent-request")
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(row, ("root".into(), None, None));
+    let synthetic: Vec<String> = sqlx::query_scalar(
+        "SELECT message_id FROM messages WHERE conversation_id = ? AND message_id LIKE '%synthetic:%'",
+    )
+    .bind(conversation)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        synthetic.len(),
+        1,
+        "the runtime message id must be derived from the message content"
+    );
+}
+
+#[tokio::test]
+async fn idless_kickoff_retries_map_onto_one_runtime_event() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    let completed = || {
+        vec![
+            ModelEvent::Start {
+                model_call_id: "retry-model-call".into(),
+            },
+            ModelEvent::TextStart,
+            ModelEvent::TextDelta("done".into()),
+            ModelEvent::TextEnd,
+            ModelEvent::Done(FinishReason::Stop),
+        ]
+    };
+    let registry = registry_for(store.clone(), &provider);
+    let conversation = "idless-retry-conversation";
+
+    provider.push(completed());
+    let first = run_idless_subagent(
+        &registry,
+        "idless-retry-a",
+        None,
+        "same subagent task",
+        conversation,
+    )
+    .await;
+    assert!(first.get("error").is_none(), "{first}");
+    wait_until_idle(store.pool(), conversation).await;
+
+    provider.push(completed());
+    let retry = run_idless_subagent(
+        &registry,
+        "idless-retry-b",
+        None,
+        "same subagent task",
+        conversation,
+    )
+    .await;
+    assert!(retry.get("error").is_none(), "{retry}");
+    wait_until_idle(store.pool(), conversation).await;
+
+    provider.push(completed());
+    let other = run_idless_subagent(
+        &registry,
+        "idless-retry-c",
+        None,
+        "a different subagent task",
+        conversation,
+    )
+    .await;
+    assert!(other.get("error").is_none(), "{other}");
+
+    let runtime_messages: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM messages
+         WHERE conversation_id = ? AND message_id LIKE 'runtime:%'",
+    )
+    .bind(conversation)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(runtime_messages, 2);
+}
+
+fn registry_for(
+    store: cursor_server::store::Store,
+    provider: &fake_provider::FakeProvider,
+) -> TransportRegistry {
+    TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(
+            PromptAssets::load(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("prompt/cursor")
+                    .as_path(),
+            )
+            .unwrap(),
+        ),
+    )
+}
+
+async fn run_idless_subagent(
+    registry: &TransportRegistry,
+    request_id: &str,
+    parent: Option<TransportParent>,
+    text: &str,
+    conversation_id: &str,
+) -> serde_json::Value {
+    let handle = registry.get_or_create(request_id).await.unwrap();
+    if let Some(parent) = parent {
+        handle.set_parent(parent).unwrap();
+    }
+    let mut output = handle.subscribe();
+    let mut message = protocol_client_run(text, "");
+    let Some(pb::agent_client_message::Message::RunRequest(request)) = message.message.as_mut()
+    else {
+        unreachable!()
+    };
+    request.conversation_id = Some(conversation_id.into());
+    request.subagent_type_name = Some("generalPurpose".into());
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(message),
+        })
+        .await
+        .unwrap();
+
+    let mut seqno = 1;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            break serde_json::from_slice::<serde_json::Value>(&payload).unwrap();
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
+            handle
+                .command(TransportCommand::Append {
+                    seqno,
+                    message: Box::new(kv_ack(kv.id)),
+                })
+                .await
+                .unwrap();
+            seqno += 1;
+        }
+    }
+}
+
+async fn wait_until_idle(pool: &sqlx::SqlitePool, conversation_id: &str) {
+    for _ in 0..50 {
+        let active: Option<String> =
+            sqlx::query_scalar("SELECT active_run_id FROM conversations WHERE conversation_id = ?")
+                .bind(conversation_id)
+                .fetch_optional(pool)
+                .await
+                .unwrap()
+                .flatten();
+        if active.is_none() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("conversation {conversation_id} never became idle");
 }
 
 async fn assert_run_starts_without_parent_dependency(

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 use chrono::{Offset, Utc};
 use chrono_tz::Tz;
+use prost::Message as _;
 
 use crate::{
     cursor::{
@@ -22,21 +23,33 @@ pub(crate) enum RuntimeAction {
     UserMessage(pb::UserMessageAction),
 }
 
+/// Fills an absent `message_id` with an identity derived from the message
+/// content. Windows Cursor sends subagent kickoff messages without one; deriving
+/// the id from content keeps retries of the same action idempotent instead of
+/// rejecting the request.
+pub(crate) fn ensure_message_id(user: &mut pb::UserMessage) {
+    if !user.message_id.is_empty() {
+        return;
+    }
+    let mut identity = user.clone();
+    identity.message_id = String::new();
+    user.message_id = format!(
+        "synthetic:{}",
+        BlobId::digest(&identity.encode_to_vec()).to_base64()
+    );
+}
+
 pub(crate) async fn compile_user_message_action(
     action: &pb::UserMessageAction,
     current_mode: i32,
     compiler: &PromptCompiler,
     blobs: &BlobSynchronizer,
 ) -> Result<CanonicalMessage> {
-    let user = action
+    let mut user = action
         .user_message
-        .as_ref()
+        .clone()
         .ok_or_else(|| Error::Protocol("Cursor user message action has no UserMessage".into()))?;
-    if user.message_id.is_empty() {
-        return Err(Error::Protocol(
-            "Cursor user message action has no message_id".into(),
-        ));
-    }
+    ensure_message_id(&mut user);
     let mode = if user.mode == pb::AgentMode::Unspecified as i32 {
         current_mode
     } else {
@@ -59,7 +72,7 @@ pub(crate) async fn compile_user_message_action(
     compile(
         format!("user-message:{}", user.message_id),
         super::run::mode_from_proto(mode)?,
-        user,
+        &user,
         action.request_context.as_ref().unwrap_or(&empty_context),
         &action_context.join("\\n\\n"),
         compiler,
@@ -82,19 +95,15 @@ pub(crate) async fn compile_injection(
     let event_id = format!("inject-context:{}", injection.injection_id);
     match injection.payload.as_ref() {
         Some(pb::inject_context_action::Payload::UserContext(context)) => {
-            let user = context.user_message.as_ref().ok_or_else(|| {
+            let mut user = context.user_message.clone().ok_or_else(|| {
                 Error::Protocol("InjectContextAction UserContext has no UserMessage".into())
             })?;
-            if user.message_id.is_empty() {
-                return Err(Error::Protocol(
-                    "InjectContextAction UserMessage has no message_id".into(),
-                ));
-            }
+            ensure_message_id(&mut user);
             let empty_context = pb::RequestContext::default();
             compile(
                 event_id,
                 super::run::mode_from_proto(mode)?,
-                user,
+                &user,
                 context.request_context.as_ref().unwrap_or(&empty_context),
                 "",
                 compiler,
