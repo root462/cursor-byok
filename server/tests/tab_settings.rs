@@ -55,6 +55,7 @@ async fn setup() -> (Router, SeenAuth, String, tempfile::TempDir) {
     let plugins = PluginRegistry::managed(store.clone(), runtime.clone(), "0.1.0".into()).unwrap();
     let service = control::ControlService::new(
         store.clone(),
+        Default::default(),
         Arc::new(provider),
         runtime,
         plugins,

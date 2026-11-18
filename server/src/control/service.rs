@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::{
     cursor::services::runtime_compatibility::RuntimeCompatibility,
-    local_app::{ClaudeHarness, CodexHarness, CursorHarness},
+    local_app::{ClaudeHarness, CodexHarness, CursorHarness, ServiceAddr},
     model::{
         ContentPart, CursorRunTraceArtifact, CursorRunTraceSummary, LlmCallRequest,
         LlmCallResponseChunk, LlmCallSummary, ModelConfig, ModelConfigInput, ModelInvocation,
@@ -183,6 +183,7 @@ pub struct ObservabilitySettings {
 impl ControlService {
     pub fn new(
         store: Store,
+        service_addr: ServiceAddr,
         provider: Arc<dyn Provider>,
         plugin_runtime: PluginRuntime,
         plugins: PluginRegistry,
@@ -191,8 +192,8 @@ impl ControlService {
     ) -> Result<Self> {
         let service = Self {
             cursor_harness: CursorHarness::new(store.clone())?,
-            claude_harness: ClaudeHarness::new(store.clone()),
-            codex_harness: CodexHarness::new(store.clone()),
+            claude_harness: ClaudeHarness::new(store.clone(), service_addr.clone()),
+            codex_harness: CodexHarness::new(store.clone(), service_addr),
             runtime_compatibility,
             store,
             provider,
@@ -202,14 +203,18 @@ impl ControlService {
             model_tests: Arc::new(Mutex::new(BTreeMap::new())),
         };
 
-        let claude = service.claude_harness.clone();
-        let codex = service.codex_harness.clone();
+        Ok(service)
+    }
+
+    /// 把 Claude / Codex 的网关地址同步成当前实际监听端口。
+    /// 必须在服务绑定监听地址之后调用，否则网关地址还是未知的。
+    pub fn spawn_client_harness_sync(&self) {
+        let claude = self.claude_harness.clone();
+        let codex = self.codex_harness.clone();
         tokio::spawn(async move {
             let _ = claude.sync_if_applied().await;
             let _ = codex.sync_if_applied().await;
         });
-
-        Ok(service)
     }
 
     pub fn runtime_compatibility(&self) -> &RuntimeCompatibility {

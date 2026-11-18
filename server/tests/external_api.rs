@@ -68,6 +68,7 @@ async fn setup() -> (
     let plugins = PluginRegistry::managed(store.clone(), runtime.clone(), "0.1.0".into()).unwrap();
     let control = control::ControlService::new(
         store.clone(),
+        Default::default(),
         shared_provider.clone(),
         runtime,
         plugins.clone(),

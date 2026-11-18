@@ -174,7 +174,6 @@ export function AppLayout() {
         {availableVersion && (
           <div className={styles.bottomUpdateCard} role="status">
             <div className={styles.bottomUpdateHeader}>
-              <span className={styles.bottomUpdateDot} aria-hidden="true" />
               <div className={styles.bottomUpdateText}>
                 <span className={styles.bottomUpdateTitle}>{t("发现新版本")}</span>
                 <span className={styles.bottomUpdateVersion}>v{availableVersion}</span>
@@ -189,9 +188,6 @@ export function AppLayout() {
               >
                 {installing ? t("安装中…") : t("立即升级")}
               </button>
-              <NavLink to="/settings" className={styles.bottomUpdateDetailBtn}>
-                {t("详情")}
-              </NavLink>
             </div>
           </div>
         )}

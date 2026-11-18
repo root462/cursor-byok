@@ -292,6 +292,7 @@ async fn setup() -> (
     let plugins = PluginRegistry::managed(store.clone(), runtime.clone(), "0.1.0".into()).unwrap();
     let control = ControlService::new(
         store,
+        Default::default(),
         Arc::new(provider.clone()),
         runtime,
         plugins,
