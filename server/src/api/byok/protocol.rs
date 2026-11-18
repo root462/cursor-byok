@@ -418,8 +418,14 @@ fn parse_anthropic_messages(
         if let Some(blocks) = content.as_array() {
             let mut text_parts = Vec::new();
             let mut calls = Vec::new();
+            let mut thinking = String::new();
             for (block_index, block) in blocks.iter().enumerate() {
                 match block.get("type").and_then(Value::as_str) {
+                    Some("thinking") => {
+                        if let Some(text) = block.get("thinking").and_then(Value::as_str) {
+                            thinking.push_str(text);
+                        }
+                    }
                     Some("tool_use") => calls.push(ToolCallContent {
                         index: calls.len(),
                         call_id: required_string(block, "id")?.into(),
@@ -479,7 +485,7 @@ fn parse_anthropic_messages(
                     role: Role::Assistant,
                     content: ProjectedContent::Assistant {
                         text,
-                        thinking: String::new(),
+                        thinking,
                         replay_state: None,
                         calls,
                     },

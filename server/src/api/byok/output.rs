@@ -95,6 +95,9 @@ impl Output {
             }
             Protocol::Messages => {
                 let mut content = Vec::new();
+                if !self.thinking.is_empty() {
+                    content.push(json!({"type":"thinking","thinking":self.thinking,"signature":""}));
+                }
                 if !self.text.is_empty() {
                     content.push(json!({"type":"text","text":self.text}));
                 }
@@ -186,6 +189,29 @@ impl Drop for CancelOnDrop {
     }
 }
 
+/// Assigns Anthropic Messages content-block indexes as blocks open.
+///
+/// Upstream events arrive in the order thinking -> text -> tools, and the
+/// Messages protocol requires every `content_block_start` to take the next
+/// unused index and every delta to target an open block. Deriving indexes from
+/// whether text had started is wrong once reasoning streams are present: the
+/// indexes collide and the client rejects the stream as malformed.
+#[derive(Default)]
+struct BlockIndexes {
+    next: usize,
+    thinking: Option<usize>,
+    text: Option<usize>,
+    tools: std::collections::BTreeMap<usize, usize>,
+}
+
+impl BlockIndexes {
+    fn open(&mut self) -> usize {
+        let index = self.next;
+        self.next += 1;
+        index
+    }
+}
+
 pub(crate) fn streamed(
     protocol: Protocol,
     mut provider: ProviderStream,
@@ -204,6 +230,7 @@ pub(crate) fn streamed(
         } else {
             yield Ok(Event::default().event("message_start").data(json!({"type":"message_start","message":{"id":id,"type":"message","role":"assistant","model":model,"content":[],"usage":{"input_tokens":0,"output_tokens":0}}}).to_string()));
         }
+        let mut blocks = BlockIndexes::default();
         let mut text_started = false;
         let mut text_closed = false;
         let mut closed_tools = HashSet::new();
@@ -211,24 +238,24 @@ pub(crate) fn streamed(
             match result {
                 Ok(event) => {
                     if matches!(event, ModelEvent::TextDelta(_)) && !text_started && !matches!(protocol, Protocol::Chat) {
-                        for (name, value) in stream_events(protocol, &ModelEvent::TextStart, &id, &model, &output, &mut text_started) {
+                        for (name, value) in stream_events(protocol, &ModelEvent::TextStart, &id, &model, &output, &mut text_started, &mut blocks) {
                             yield Ok(Event::default().event(name).data(value.to_string()));
                         }
                     }
                     if matches!(event, ModelEvent::Done(_)) {
                         if text_started && !text_closed {
-                            for (name, value) in stream_events(protocol, &ModelEvent::TextEnd, &id, &model, &output, &mut text_started) {
+                            for (name, value) in stream_events(protocol, &ModelEvent::TextEnd, &id, &model, &output, &mut text_started, &mut blocks) {
                                 yield Ok(Event::default().event(name).data(value.to_string()));
                             }
                         }
                         for index in output.tools.keys().filter(|index| !closed_tools.contains(*index)).copied().collect::<Vec<_>>() {
-                            for (name, value) in stream_events(protocol, &ModelEvent::ToolCallEnd { index }, &id, &model, &output, &mut text_started) {
+                            for (name, value) in stream_events(protocol, &ModelEvent::ToolCallEnd { index }, &id, &model, &output, &mut text_started, &mut blocks) {
                                 yield Ok(Event::default().event(name).data(value.to_string()));
                             }
                         }
                     }
                     output.update(&event);
-                    for (name, value) in stream_events(protocol, &event, &id, &model, &output, &mut text_started) {
+                    for (name, value) in stream_events(protocol, &event, &id, &model, &output, &mut text_started, &mut blocks) {
                         yield Ok(Event::default().event(name).data(value.to_string()));
                     }
                     if matches!(event, ModelEvent::TextEnd | ModelEvent::Done(_)) {
@@ -265,6 +292,7 @@ fn stream_events(
     model: &str,
     output: &Output,
     text_started: &mut bool,
+    blocks: &mut BlockIndexes,
 ) -> Vec<(&'static str, Value)> {
     match protocol {
         Protocol::Chat => match event {
@@ -390,67 +418,237 @@ fn stream_events(
             _ => Vec::new(),
         },
         Protocol::Messages => match event {
-            ModelEvent::TextStart => {
-                if *text_started {
-                    Vec::new()
-                } else {
-                    *text_started = true;
+            ModelEvent::ThinkingStart => match blocks.thinking {
+                Some(_) => Vec::new(),
+                None => {
+                    let index = blocks.open();
+                    blocks.thinking = Some(index);
                     vec![(
                         "content_block_start",
-                        json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+                        json!({"type":"content_block_start","index":index,"content_block":{"type":"thinking","thinking":""}}),
                     )]
                 }
+            },
+            ModelEvent::ThinkingDelta(delta) => {
+                let Some(index) = blocks.thinking else {
+                    return Vec::new();
+                };
+                vec![(
+                    "content_block_delta",
+                    json!({"type":"content_block_delta","index":index,"delta":{"type":"thinking_delta","thinking":delta}}),
+                )]
             }
+            ModelEvent::ThinkingEnd => match blocks.thinking.take() {
+                Some(index) => vec![(
+                    "content_block_stop",
+                    json!({"type":"content_block_stop","index":index}),
+                )],
+                None => Vec::new(),
+            },
+            ModelEvent::TextStart => open_text_block(blocks),
             ModelEvent::TextDelta(delta) => {
-                let mut events = Vec::new();
-                if !*text_started {
-                    *text_started = true;
-                    events.push(("content_block_start",json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}})));
+                let mut events = open_text_block(blocks);
+                if let Some(index) = blocks.text {
+                    events.push(("content_block_delta",json!({"type":"content_block_delta","index":index,"delta":{"type":"text_delta","text":delta}})));
                 }
-                events.push(("content_block_delta",json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":delta}})));
                 events
             }
-            ModelEvent::TextEnd => {
-                if *text_started {
-                    vec![(
-                        "content_block_stop",
-                        json!({"type":"content_block_stop","index":0}),
-                    )]
-                } else {
-                    Vec::new()
-                }
-            }
+            ModelEvent::TextEnd => match blocks.text.take() {
+                Some(index) => vec![(
+                    "content_block_stop",
+                    json!({"type":"content_block_stop","index":index}),
+                )],
+                None => Vec::new(),
+            },
             ModelEvent::ToolCallStart {
                 index,
                 call_id,
                 name,
-            } => vec![(
-                "content_block_start",
-                json!({"type":"content_block_start","index":index + usize::from(*text_started),"content_block":{"type":"tool_use","id":call_id,"name":name,"input":{}}}),
-            )],
-            ModelEvent::ToolCallArgumentsDelta { index, delta } => vec![(
-                "content_block_delta",
-                json!({"type":"content_block_delta","index":index + usize::from(*text_started),"delta":{"type":"input_json_delta","partial_json":delta}}),
-            )],
-            ModelEvent::ToolCallEnd { index } => vec![(
-                "content_block_stop",
-                json!({"type":"content_block_stop","index":index + usize::from(*text_started)}),
-            )],
+            } => {
+                let block = match blocks.tools.get(index) {
+                    Some(block) => *block,
+                    None => {
+                        let block = blocks.open();
+                        blocks.tools.insert(*index, block);
+                        block
+                    }
+                };
+                vec![(
+                    "content_block_start",
+                    json!({"type":"content_block_start","index":block,"content_block":{"type":"tool_use","id":call_id,"name":name,"input":{}}}),
+                )]
+            }
+            ModelEvent::ToolCallArgumentsDelta { index, delta } => {
+                let Some(block) = blocks.tools.get(index).copied() else {
+                    return Vec::new();
+                };
+                vec![(
+                    "content_block_delta",
+                    json!({"type":"content_block_delta","index":block,"delta":{"type":"input_json_delta","partial_json":delta}}),
+                )]
+            }
+            ModelEvent::ToolCallEnd { index } => {
+                let Some(block) = blocks.tools.remove(index) else {
+                    return Vec::new();
+                };
+                vec![(
+                    "content_block_stop",
+                    json!({"type":"content_block_stop","index":block}),
+                )]
+            }
             ModelEvent::Done(reason) => {
                 let stop = match reason {
                     FinishReason::Stop => "end_turn",
                     FinishReason::Length => "max_tokens",
                     FinishReason::ToolUse => "tool_use",
                 };
-                vec![
-                    (
-                        "message_delta",
-                        json!({"type":"message_delta","delta":{"stop_reason":stop,"stop_sequence":null},"usage":output.usage_json(protocol)}),
-                    ),
-                    ("message_stop", json!({"type":"message_stop"})),
-                ]
+                let mut events: Vec<(&'static str, Value)> = Vec::new();
+                // A provider may finish without closing its blocks; the
+                // protocol requires every started block to stop first.
+                if let Some(index) = blocks.thinking.take() {
+                    events.push(("content_block_stop", json!({"type":"content_block_stop","index":index})));
+                }
+                if let Some(index) = blocks.text.take() {
+                    events.push(("content_block_stop", json!({"type":"content_block_stop","index":index})));
+                }
+                events.push((
+                    "message_delta",
+                    json!({"type":"message_delta","delta":{"stop_reason":stop,"stop_sequence":null},"usage":output.usage_json(protocol)}),
+                ));
+                events.push(("message_stop", json!({"type":"message_stop"})));
+                events
             }
             _ => Vec::new(),
         },
+    }
+}
+
+/// Opens the text block on its first delta, reusing one index for the whole
+/// text run so later deltas keep targeting an open block.
+fn open_text_block(blocks: &mut BlockIndexes) -> Vec<(&'static str, Value)> {
+    if blocks.text.is_some() {
+        return Vec::new();
+    }
+    let index = blocks.open();
+    blocks.text = Some(index);
+    vec![(
+        "content_block_start",
+        json!({"type":"content_block_start","index":index,"content_block":{"type":"text","text":""}}),
+    )]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn drive(events: &[ModelEvent]) -> Vec<(String, Value)> {
+        let mut output = Output::default();
+        let mut blocks = BlockIndexes::default();
+        let mut text_started = false;
+        let mut emitted = Vec::new();
+        for event in events {
+            output.update(event);
+            for (name, value) in stream_events(
+                Protocol::Messages,
+                event,
+                "id",
+                "model",
+                &output,
+                &mut text_started,
+                &mut blocks,
+            ) {
+                emitted.push((name.to_string(), value));
+            }
+        }
+        emitted
+    }
+
+    fn indexes(events: &[(String, Value)], kind: &str) -> Vec<u64> {
+        events
+            .iter()
+            .filter(|(_, value)| value["type"] == kind)
+            .map(|(_, value)| value["index"].as_u64().expect("index"))
+            .collect()
+    }
+
+    #[test]
+    fn thinking_text_and_tool_get_distinct_increasing_blocks() {
+        let events = drive(&[
+            ModelEvent::ThinkingStart,
+            ModelEvent::ThinkingDelta("hmm".into()),
+            ModelEvent::ThinkingEnd,
+            ModelEvent::TextStart,
+            ModelEvent::TextDelta("hello".into()),
+            ModelEvent::TextEnd,
+            ModelEvent::ToolCallStart {
+                index: 0,
+                call_id: "call-1".into(),
+                name: "Read".into(),
+            },
+            ModelEvent::ToolCallArgumentsDelta {
+                index: 0,
+                delta: "{}".into(),
+            },
+            ModelEvent::ToolCallEnd { index: 0 },
+            ModelEvent::Done(FinishReason::ToolUse),
+        ]);
+
+        assert_eq!(indexes(&events, "content_block_start"), vec![0, 1, 2]);
+        assert_eq!(indexes(&events, "content_block_delta"), vec![0, 1, 2]);
+        assert_eq!(indexes(&events, "content_block_stop"), vec![0, 1, 2]);
+
+        let kinds: Vec<&str> = events
+            .iter()
+            .filter(|(name, _)| name == "content_block_start")
+            .map(|(_, value)| value["content_block"]["type"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["thinking", "text", "tool_use"]);
+    }
+
+    #[test]
+    fn text_block_opens_once_and_closes_once_without_thinking() {
+        let events = drive(&[
+            ModelEvent::TextDelta(" a".into()),
+            ModelEvent::TextDelta(" b".into()),
+            ModelEvent::TextEnd,
+            ModelEvent::Done(FinishReason::Stop),
+        ]);
+
+        assert_eq!(indexes(&events, "content_block_start"), vec![0]);
+        assert_eq!(indexes(&events, "content_block_delta"), vec![0, 0]);
+        assert_eq!(indexes(&events, "content_block_stop"), vec![0]);
+        let stop_reason = events
+            .iter()
+            .find(|(name, _)| name == "message_delta")
+            .map(|(_, value)| value["delta"]["stop_reason"].clone())
+            .unwrap();
+        assert_eq!(stop_reason, "end_turn");
+    }
+
+    #[test]
+    fn done_closes_blocks_left_open_by_the_provider() {
+        let events = drive(&[
+            ModelEvent::ThinkingStart,
+            ModelEvent::ThinkingDelta("hmm".into()),
+            ModelEvent::TextDelta("partial".into()),
+            ModelEvent::Done(FinishReason::Length),
+        ]);
+
+        assert_eq!(indexes(&events, "content_block_stop"), vec![0, 1]);
+        let last = events.last().expect("message_stop");
+        assert_eq!(last.0, "message_stop");
+    }
+
+    #[test]
+    fn tool_deltas_do_not_emit_for_unknown_indexes() {
+        let events = drive(&[
+            ModelEvent::ToolCallArgumentsDelta {
+                index: 7,
+                delta: "{}".into(),
+            },
+            ModelEvent::ToolCallEnd { index: 7 },
+        ]);
+
+        assert!(events.is_empty());
     }
 }
