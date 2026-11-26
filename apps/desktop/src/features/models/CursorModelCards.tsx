@@ -1,6 +1,5 @@
 import type { IconifyIcon } from "@iconify/react/offline";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import Sortable from "sortablejs";
+import { useState, type ReactNode } from "react";
 import type { Model } from "../../shared/api";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
@@ -9,6 +8,8 @@ import { TruncatedButton } from "../../shared/ui/TruncatedButton";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
 import { resolveModelBrandIcon } from "./modelBrandIcon";
+import type { ModelClient } from "./modelCopy";
+import { SortableModelList } from "./SortableModelList";
 
 export type CursorModelGrouping = "flat" | "provider" | "type";
 
@@ -20,6 +21,7 @@ export type CursorModelGroup = {
 };
 
 type CursorModelCardsProps = {
+  client: ModelClient;
   models: Model[];
   grouping: CursorModelGrouping;
   disabled: boolean;
@@ -33,9 +35,7 @@ type CursorModelCardsProps = {
   onGroupSettings: (group: CursorModelGroup) => void;
 };
 
-type ModelGridProps = Omit<CursorModelCardsProps, "grouping"> & {
-  sortable: boolean;
-};
+type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "onGroupSettings">;
 
 export function cursorModelGroups(models: Model[], grouping: Exclude<CursorModelGrouping, "flat">): CursorModelGroup[] {
   const groups = new Map<string, CursorModelGroup>();
@@ -53,7 +53,7 @@ export function cursorModelGroups(models: Model[], grouping: Exclude<CursorModel
 
 export function CursorModelCards(props: CursorModelCardsProps) {
   return props.grouping === "flat"
-    ? <div style={{ paddingTop: "10px" }}><ModelGrid {...props} sortable /></div>
+    ? <div style={{ paddingTop: "10px" }}><ModelGrid {...props} /></div>
     : <div className={styles.modelGroups}>
       {cursorModelGroups(props.models, props.grouping).map((group) => <CollapsibleGroup
         key={group.key}
@@ -62,17 +62,19 @@ export function CursorModelCards(props: CursorModelCardsProps) {
         defaultOpen={false}
         onSettings={props.grouping === "provider" ? () => props.onGroupSettings(group) : undefined}
       >
-        {group.models.map((model) => <ModelListRow
-          key={model.model_hash}
-          model={model}
-          disabled={props.disabled}
-          testing={props.testingModelHashes.has(model.model_hash)}
-          result={props.testResults.get(model.model_hash)}
-          onTest={() => props.onTest(model)}
-          onEdit={() => props.onEdit(model)}
-          onDuplicate={() => props.onDuplicate(model)}
-          onDelete={() => props.onDelete(model)}
-        />)}
+        <SortableModelList client={props.client} models={group.models} disabled={props.disabled} className={styles.modelList} itemClassName={styles.modelRow}>
+          {group.models.map((model) => <ModelListRow
+            key={model.model_hash}
+            model={model}
+            disabled={props.disabled}
+            testing={props.testingModelHashes.has(model.model_hash)}
+            result={props.testResults.get(model.model_hash)}
+            onTest={() => props.onTest(model)}
+            onEdit={() => props.onEdit(model)}
+            onDuplicate={() => props.onDuplicate(model)}
+            onDelete={() => props.onDelete(model)}
+          />)}
+        </SortableModelList>
       </CollapsibleGroup>)}
     </div>;
 }
@@ -110,7 +112,7 @@ function CollapsibleGroup({ label, icon, defaultOpen = true, onSettings, childre
         <Icon icon={open ? chevronDownIcon : chevronRightIcon} size="1em" />
       </button>
     </div>
-    {open && <div className={styles.modelList}>{children}</div>}
+    {open && children}
   </Card>;
 }
 
@@ -134,10 +136,10 @@ function ModelListRow({
   onDelete: () => void;
 }) {
   const brand = resolveModelBrandIcon(model);
-  return <div className={styles.modelRow}>
+  return <div className={styles.modelRow} data-model-hash={model.model_hash} data-model-draggable={!disabled || undefined}>
     <div className={styles.modelRowLeft}>
       <div className={styles.modelAvatarSmall} aria-hidden="true">
-        {brand.src ? <img src={brand.src} alt="" /> : <Icon icon={brand.icon} size="1.15em" />}
+        {brand.src ? <img src={brand.src} alt="" /> : <Icon icon={brand.icon} size={brand.name === "OpenAI" ? "1.4em" : "1.15em"} />}
       </div>
       <div className={styles.modelRowName}>
         <span className={styles.modelRowNameText}>{model.display_name}</span>
@@ -155,8 +157,8 @@ function ModelListRow({
 }
 
 function ModelGrid({
+  client,
   models,
-  sortable: sortableEnabled,
   disabled,
   testingModelHashes,
   testResults,
@@ -166,63 +168,12 @@ function ModelGrid({
   onDelete,
   onReorder,
 }: ModelGridProps) {
-  const grid = useRef<HTMLDivElement>(null);
-  const sortable = useRef<Sortable | null>(null);
-  const currentModels = useRef(models);
-  const reorder = useRef(onReorder);
-  currentModels.current = models;
-  reorder.current = onReorder;
-
-  useEffect(() => {
-    if (!sortableEnabled || !grid.current) return;
-    sortable.current = Sortable.create(grid.current, {
-      animation: 160,
-      dataIdAttr: "data-model-hash",
-      draggable: `.${styles.modelCard}`,
-      filter: "button, a, input, select, textarea, [data-prevent-drag]",
-      preventOnFilter: false,
-      ghostClass: styles.sortGhost,
-      chosenClass: styles.sortChosen,
-      dragClass: styles.sortDragging,
-      forceFallback: true,
-      fallbackOnBody: true,
-      fallbackTolerance: 3,
-      onEnd: (event) => {
-        const oldIndex = event.oldDraggableIndex ?? event.oldIndex;
-        const newIndex = event.newDraggableIndex ?? event.newIndex;
-        if (typeof oldIndex !== "number"
-          || typeof newIndex !== "number"
-          || oldIndex === newIndex) {
-          sortable.current?.sort(currentModels.current.map((model) => model.model_hash), false);
-          return;
-        }
-        const reordered = currentModels.current.slice();
-        const [moved] = reordered.splice(oldIndex, 1);
-        if (!moved || newIndex < 0 || newIndex > reordered.length) {
-          sortable.current?.sort(currentModels.current.map((model) => model.model_hash), false);
-          return;
-        }
-        reordered.splice(newIndex, 0, moved);
-        reorder.current(reordered.map((model) => model.model_hash));
-      },
-    });
-    return () => {
-      sortable.current?.destroy();
-      sortable.current = null;
-    };
-  }, [sortableEnabled]);
-
-  useEffect(() => {
-    sortable.current?.option("disabled", disabled);
-    sortable.current?.sort(models.map((model) => model.model_hash), false);
-  }, [disabled, models]);
-
-  return <div ref={grid} className={styles.modelGrid}>
+  return <SortableModelList client={client} models={models} disabled={disabled} className={styles.modelGrid} itemClassName={styles.modelCard} onReorder={onReorder}>
     {models.map((model) => {
       const result = testResults.get(model.model_hash);
       const testing = testingModelHashes.has(model.model_hash);
       const brand = resolveModelBrandIcon(model);
-      return <Card className={styles.modelCard} data-model-hash={model.model_hash} data-sortable={sortableEnabled && !disabled ? "true" : undefined} key={model.model_hash}>
+      return <Card className={styles.modelCard} data-model-hash={model.model_hash} data-model-draggable={!disabled || undefined} key={model.model_hash}>
         <div className={styles.modelCardContent}>
           <div className={styles.modelCardTop}>
             <div className={styles.modelCardTitleGroup}>
@@ -230,7 +181,7 @@ function ModelGrid({
                 {brand.src ? (
                   <img src={brand.src} alt="" />
                 ) : (
-                  <Icon icon={brand.icon} size="1.35em" />
+                  <Icon icon={brand.icon} size={brand.name === "OpenAI" ? "2em" : "1.35em"} />
                 )}
               </div>
               <div className={styles.modelCardName}>
@@ -254,7 +205,7 @@ function ModelGrid({
         </div>
       </Card>;
     })}
-  </div>;
+  </SortableModelList>;
 }
 
 function providerGroup(model: Model) {

@@ -3,8 +3,8 @@ use axum::{extract::State, Json};
 
 use crate::{
     local_app::{
-        detect_cursor_app, ClaudeHarnessStatus, CodexHarnessStatus, CursorAppInfo,
-        CursorHarnessStatus, SetEnabled,
+        detect_claude_app, detect_codex_app, detect_cursor_app, ClaudeHarnessStatus, ClientAppInfo,
+        CodexHarnessStatus, CursorAppInfo, CursorHarnessStatus, SetEnabled,
     },
     Result,
 };
@@ -63,6 +63,14 @@ pub async fn codex_running() -> Json<ProcessRunningStatus> {
     Json(ProcessRunningStatus {
         running: crate::local_app::is_codex_running().await,
     })
+}
+
+pub async fn claude_app_info() -> Json<ClientAppInfo> {
+    Json(detect_claude_app().await)
+}
+
+pub async fn codex_app_info() -> Json<ClientAppInfo> {
+    Json(detect_codex_app().await)
 }
 
 /// Reports the Cursor desktop build installed on this machine.

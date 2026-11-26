@@ -6,7 +6,19 @@
  * 用户一旦设置过（哪怕是把所有列都打开，写成 `[]`），就完全以用户的选择为准。
  */
 
-const STORAGE_KEY = "cursor-byok.calls.hidden-columns";
+const STORAGE_KEY = "cursor-byok.calls.hidden-columns.v2";
+
+export const DEFAULT_VISIBLE_COLUMNS = new Set([
+  "status",
+  "actions",
+  "display_name",
+  "usage_cost",
+  "created_at",
+  "model_id",
+  "reasoning_effort",
+  "client",
+  "duration",
+]);
 
 export function loadHiddenColumns(fallback: ReadonlySet<string>): ReadonlySet<string> {
   try {

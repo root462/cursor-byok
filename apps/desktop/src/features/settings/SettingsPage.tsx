@@ -4,6 +4,7 @@ import { PageContent } from "../../shell/layout/PageContent";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
 import { CommitSettingsCard } from "./CommitSettingsCard";
 import { CursorAppCard } from "./CursorAppCard";
+import { ClientAppCard } from "./ClientAppCard";
 import { ExternalApiSettingsCard } from "./ExternalApiSettingsCard";
 import { PricingSettingsCard } from "./PricingSettingsCard";
 import { ProxySettingsCard } from "./ProxySettingsCard";
@@ -13,6 +14,7 @@ import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { Select } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
+import { Tabs } from "../../shared/ui/Tabs";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { setLocalePreference, useI18n, type LocalePreference } from "../../i18n/store";
 import { useMessage } from "../../shared/ui/message";
@@ -261,7 +263,11 @@ export function SettingsPage() {
             <AppLifecycleSettingsCard />
             {languageCard}
           </div>
-          <CursorAppCard />
+          <Tabs ariaLabel={t("本机应用")} items={[
+            { value: "cursor", label: "Cursor", content: <CursorAppCard /> },
+            { value: "codex", label: "Codex Desktop", content: <ClientAppCard key="codex" client="codex" /> },
+            { value: "claude", label: "Claude CLI", content: <ClientAppCard key="claude" client="claude" /> },
+          ]} />
         </div>
       )}
       {category === "network" && (

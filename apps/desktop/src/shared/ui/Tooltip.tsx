@@ -60,21 +60,21 @@ export function Tooltip({ id, anchor, children, onPointerEnter, onPointerLeave }
   onPointerLeave?: () => void;
 }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-  const [availableHeight, setAvailableHeight] = useState<number | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number; availableHeight: number } | null>(null);
 
   useLayoutEffect(() => {
     const tooltip = tooltipRef.current;
     if (!anchor || !tooltip) {
       setPosition(null);
-      setAvailableHeight(null);
       return;
     }
 
     setPosition(null);
-    setAvailableHeight(null);
+    let active = true;
     const updatePosition = () => {
+      let availableHeight = 0;
       void computePosition(anchor, tooltip, {
+        strategy: "fixed",
         placement: "top",
         middleware: [
           offset(8),
@@ -82,15 +82,26 @@ export function Tooltip({ id, anchor, children, onPointerEnter, onPointerLeave }
           shift({ padding: 12 }),
           size({
             padding: 12,
-            apply({ availableHeight }) {
-              setAvailableHeight((current) => current === availableHeight ? current : availableHeight);
+            apply({ availableHeight: nextAvailableHeight }) {
+              availableHeight = nextAvailableHeight;
             },
           }),
         ],
-      }).then(({ x, y }) => setPosition({ left: x, top: y }));
+      }).then(({ x, y }) => {
+        if (!active) return;
+        setPosition((current) =>
+          current?.left === x && current.top === y && current.availableHeight === availableHeight
+            ? current
+            : { left: x, top: y, availableHeight },
+        );
+      });
     };
 
-    return autoUpdate(anchor, tooltip, updatePosition);
+    const cleanup = autoUpdate(anchor, tooltip, updatePosition);
+    return () => {
+      active = false;
+      cleanup();
+    };
   }, [anchor]);
 
   if (!anchor) return null;
@@ -105,13 +116,13 @@ export function Tooltip({ id, anchor, children, onPointerEnter, onPointerLeave }
       style={{
         left: position?.left ?? 0,
         top: position?.top ?? 0,
-        maxHeight: availableHeight ? `${availableHeight}px` : undefined,
+        maxHeight: position ? Math.max(0, position.availableHeight) : undefined,
         visibility: position ? "visible" : "hidden",
       }}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
     >
-      {children}
+      <div className={styles.body}>{children}</div>
     </div>,
     document.body,
   );

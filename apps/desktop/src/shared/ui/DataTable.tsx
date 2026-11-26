@@ -20,6 +20,7 @@ export function DataTable<T>({
   footerExtra,
   selectedKey,
   onRowClick,
+  tableClassName,
 }: {
   rows: T[];
   columns: DataTableColumn<T>[];
@@ -29,12 +30,20 @@ export function DataTable<T>({
   footerExtra?: ReactNode;
   selectedKey?: string | number | null;
   onRowClick?: (row: T) => void;
+  tableClassName?: string;
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
   const pageRows = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, rows]);
+
+  const tableStyle = minWidth == null
+    ? undefined
+    : {
+        minWidth,
+        width: `max(100%, ${typeof minWidth === "number" ? `${minWidth}px` : minWidth})`,
+      };
 
   return <div className={styles.root}>
     <div className={styles.tableRegion}>
@@ -45,7 +54,7 @@ export function DataTable<T>({
         contentClassName={styles.tableContent}
         scrollbarInsetTop="33px"
       >
-        <table className={styles.table} style={{ minWidth }}>
+        <table className={[styles.table, tableClassName].filter(Boolean).join(" ")} style={tableStyle}>
           <thead>
             <tr>
               {columns.map((column) => (

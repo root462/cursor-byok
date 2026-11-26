@@ -107,8 +107,12 @@ export interface CursorHarnessStatus {
   ca_install_command: string | null;
 }
 
+export interface ClientAppInfo {
+  installed: boolean | null;
+  version: string | null;
+}
+
 export interface ClaudeHarnessStatus {
-  installed: boolean;
   config_path: string;
   configured_models: number;
   settings_applied: boolean;
@@ -116,7 +120,6 @@ export interface ClaudeHarnessStatus {
 }
 
 export interface CodexHarnessStatus {
-  installed: boolean;
   config_path: string;
   catalog_path: string;
   configured_models: number;
@@ -655,8 +658,10 @@ export const api = {
   setSkillEnabled: (id: string, client: CustomizationClient, enabled: boolean) => request<SkillSettings>(`/skills/${encodeURIComponent(id)}/${client}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
   uninstallSkill: (id: string) => request<SkillSettings>(`/skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
   claudeHarness: () => request<ClaudeHarnessStatus>("/harness/claude/status"),
+  claudeAppInfo: () => request<ClientAppInfo>("/harness/claude/app"),
   setClaudeEnabled: (enabled: boolean) => request<ClaudeHarnessStatus>("/harness/claude/enabled", { method: "PUT", body: JSON.stringify({ enabled }) }),
   codexHarness: () => request<CodexHarnessStatus>("/harness/codex/status"),
+  codexAppInfo: () => request<ClientAppInfo>("/harness/codex/app"),
   codexRunning: () => request<{ running: boolean }>("/harness/codex/running"),
   setCodexEnabled: (enabled: boolean, terminateProcess?: boolean) => request<CodexHarnessStatus>("/harness/codex/enabled", { method: "PUT", body: JSON.stringify({ enabled, terminate_process: Boolean(terminateProcess) }) }),
   overview: (filter?: { startMs: number; endMs: number; modelHashes?: string[]; bucketMs?: number }) => {

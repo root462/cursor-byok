@@ -4,7 +4,7 @@ import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { CallTable } from "./CallTable";
 import { createCallColumns } from "./callColumns";
-import { loadHiddenColumns, saveHiddenColumns } from "./columnVisibility";
+import { DEFAULT_VISIBLE_COLUMNS, loadHiddenColumns, saveHiddenColumns } from "./columnVisibility";
 import styles from "./CallsPage.module.scss";
 
 const CALL_REFRESH_INTERVAL_MS = 2_000;
@@ -14,7 +14,9 @@ export function CallsPage() {
   const onDetails = useCallback((call: LlmCall) => void appStore.openCallDetails(call.call_id), []);
   const columns = useMemo(() => createCallColumns(onDetails), [onDetails]);
   const [hiddenColumns, setHiddenColumns] = useState<ReadonlySet<string>>(() =>
-    loadHiddenColumns(new Set(columns.filter((spec) => spec.defaultHidden).map((spec) => spec.key))),
+    loadHiddenColumns(new Set(columns
+      .filter((spec) => spec.defaultHidden || !DEFAULT_VISIBLE_COLUMNS.has(spec.key))
+      .map((spec) => spec.key))),
   );
   const updateHiddenColumns = useCallback((next: ReadonlySet<string>) => {
     setHiddenColumns(next);

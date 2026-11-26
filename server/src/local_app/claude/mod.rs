@@ -12,7 +12,6 @@ pub use paths::{get_claude_config_dir, get_claude_settings_path};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ClaudeHarnessStatus {
-    pub installed: bool,
     pub config_path: String,
     pub configured_models: usize,
     pub settings_applied: bool,
@@ -36,7 +35,6 @@ impl ClaudeHarness {
     pub async fn status(&self) -> Result<ClaudeHarnessStatus> {
         let models = self.store.client_models("claude").await?;
         let config_path = get_claude_settings_path();
-        let installed = config_path.parent().map(|p| p.exists()).unwrap_or(false);
         let settings_applied = match self.service_addr.gateway_base() {
             Some(base) => config::is_claude_settings_applied(&models, &base),
             None => false,
@@ -44,7 +42,6 @@ impl ClaudeHarness {
         let current_model = models.first().map(|m| m.model_id.clone());
 
         Ok(ClaudeHarnessStatus {
-            installed,
             config_path: config_path.to_string_lossy().to_string(),
             configured_models: models.len(),
             settings_applied,

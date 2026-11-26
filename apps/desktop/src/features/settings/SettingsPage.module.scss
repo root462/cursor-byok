@@ -46,6 +46,15 @@
   --liquid-min-width: 0;
   --liquid-min-height: 0;
 
+  &.topNavBar {
+    border-color: transparent;
+    box-shadow: 0 4px 14px rgb(15 23 42 / 8%);
+  }
+
+  &::before {
+    content: none;
+  }
+
   button {
     height: 26px;
     padding: 0 13px;

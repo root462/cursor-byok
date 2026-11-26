@@ -7,7 +7,7 @@ export type TabItem = {
   content: ReactNode;
 };
 
-export function Tabs({ items, defaultValue }: { items: TabItem[]; defaultValue?: string }) {
+export function Tabs({ items, defaultValue, ariaLabel }: { items: TabItem[]; defaultValue?: string; ariaLabel?: string }) {
   const initialValue = defaultValue && items.some((item) => item.value === defaultValue)
     ? defaultValue
     : items[0]?.value;
@@ -27,7 +27,7 @@ export function Tabs({ items, defaultValue }: { items: TabItem[]; defaultValue?:
   };
 
   return <div className={styles.root}>
-    <div className={styles.list} role="tablist">
+    <div className={styles.list} role="tablist" aria-label={ariaLabel}>
       {items.map((item) => {
         const selected = item.value === activeItem.value;
         return <button

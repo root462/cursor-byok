@@ -49,9 +49,8 @@ body,
   overflow: hidden;
 }
 
-/* 动态液态背景层位于 index.html 中的 .dynamic-backdrop，
-   由 _backdrop.scss 提供流体光斑与 Harmony 陶瓷底纹，
-   让全站的 .liquid 玻璃卡片能够动态采样并折射流动光晕。 */
+/* 全站背景由 AppFrame 中的 .dynamicBackdrop 提供：使用无图片的浅色渐变，
+   为内容表面提供稳定、低干扰的底色。 */
 
 button,
 input,

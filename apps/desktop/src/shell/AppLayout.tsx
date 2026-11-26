@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { IconifyIcon } from "@iconify/react/offline";
 import KeepAliveRouteOutlet from "keepalive-for-react-router";
 import { NavLink, useLocation } from "react-router-dom";
@@ -23,8 +23,10 @@ import { useAppStore } from "../shared/store/appStore";
 import { updateStore, useUpdateStore } from "../shared/store/updateStore";
 import styles from "./AppLayout.module.scss";
 import { PageActionsTarget } from "./PageActions";
+import { ModelDragProvider, useModelDrag } from "../features/models/ModelDrag";
+import { modelClients, type ModelClient } from "../features/models/modelCopy";
 
-type MenuItemPage = { kind: "page"; path: string; label: string; icon: IconifyIcon | string; activeIcon?: IconifyIcon };
+type MenuItemPage = { kind: "page"; path: string; label: string; icon: IconifyIcon | string; activeIcon?: IconifyIcon; client?: ModelClient };
 type MenuItem =
   | MenuItemPage
   | { kind: "group"; label: string };
@@ -47,6 +49,10 @@ function NavigationRow({
   const containerRef = useRef<HTMLSpanElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   const [overflow, setOverflow] = useState(0);
+  const { source, over } = useModelDrag();
+  const dropState = source && item.client && source !== item.client
+    ? (over === item.client ? "over" : "available")
+    : undefined;
 
   const handleMouseEnter = () => {
     if (containerRef.current && textRef.current) {
@@ -67,6 +73,8 @@ function NavigationRow({
         to={item.path}
         end={item.path === "/"}
         title={item.label}
+        data-model-client={item.client}
+        data-model-drop={dropState}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
@@ -133,26 +141,153 @@ function NavigationRow({
 }
 
 export function AppLayout() {
+  return <ModelDragProvider><AppLayoutContent /></ModelDragProvider>;
+}
+
+function AppLayoutContent() {
   const { cursorHarness, claudeHarness, codexHarness } = useAppStore();
   const { availableVersion, installing } = useUpdateStore();
   const location = useLocation();
+  const navigationRef = useRef<HTMLElement>(null);
+  const activePillRef = useRef<HTMLSpanElement>(null);
+  const syncActivePillRef = useRef<((animate: boolean) => void) | null>(null);
+  const activePillInitializedRef = useRef(false);
+  const activePillAnimationRef = useRef<Animation | null>(null);
+  const activePillScrollFrameRef = useRef<number | null>(null);
   const [leftActionTarget, setLeftActionTarget] = useState<HTMLDivElement | null>(null);
   const [rightActionTarget, setRightActionTarget] = useState<HTMLDivElement | null>(null);
   const menuItems: MenuItem[] = [
     { kind: "page", path: "/", label: t("驾驶舱"), icon: menuOverviewIcon, activeIcon: menuOverviewActiveIcon },
     { kind: "page", path: "/calls", label: t("调用详细"), icon: menuCallsIcon, activeIcon: menuCallsActiveIcon },
     { kind: "group", label: t("模型配置") },
-    { kind: "page", path: "/harness/cursor", label: "Cursor", icon: cursorIconUrl },
-    { kind: "page", path: "/harness/claude", label: "Claude CLI", icon: claudeIconUrl },
-    { kind: "page", path: "/harness/codex", label: "Codex Desktop", icon: codexIconUrl },
+    { kind: "page", path: "/harness/cursor", label: modelClients.cursor, icon: cursorIconUrl, client: "cursor" },
+    { kind: "page", path: "/harness/claude", label: modelClients.claude, icon: claudeIconUrl, client: "claude" },
+    { kind: "page", path: "/harness/codex", label: modelClients.codex, icon: codexIconUrl, client: "codex" },
     { kind: "group", label: t("设置") },
     { kind: "page", path: "/plugins", label: t("插件配置"), icon: menuPluginsIcon, activeIcon: menuPluginsActiveIcon },
     { kind: "page", path: "/settings", label: t("系统设置"), icon: menuSettingsIcon, activeIcon: menuSettingsActiveIcon },
   ];
 
+  useLayoutEffect(() => {
+    const navigation = navigationRef.current;
+    const pill = activePillRef.current;
+    if (!navigation || !pill) return;
+    const scrollHost = navigation.querySelector<HTMLElement>("[data-scrolled]");
+    const scrollViewport = scrollHost?.firstElementChild as HTMLElement | null;
+    if (!scrollViewport) return;
+
+    let resizeObserver: ResizeObserver | null = null;
+    const syncPill = (animate: boolean) => {
+      const activeLink = navigation.querySelector<HTMLElement>('a[aria-current="page"]');
+      if (!activeLink) return;
+      resizeObserver?.observe(activeLink);
+
+      const navigationRect = navigation.getBoundingClientRect();
+      const linkRect = activeLink.getBoundingClientRect();
+      const currentRect = pill.getBoundingClientRect();
+      const currentTransform = getComputedStyle(pill).transform;
+      const targetX = linkRect.left - navigationRect.left;
+      const targetY = linkRect.top - navigationRect.top;
+      const targetWidth = linkRect.width;
+      const targetHeight = linkRect.height;
+      const previousX = currentRect.left - navigationRect.left;
+      const previousY = currentRect.top - navigationRect.top;
+      const deltaX = targetX - previousX;
+      const deltaY = targetY - previousY;
+
+      activePillAnimationRef.current?.cancel();
+      activePillAnimationRef.current = null;
+      pill.style.setProperty("--active-pill-width", `${targetWidth}px`);
+      pill.style.setProperty("--active-pill-height", `${targetHeight}px`);
+      pill.style.setProperty("--active-pill-x", `${targetX}px`);
+      pill.style.setProperty("--active-pill-y", `${targetY}px`);
+
+      if (
+        !animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+        (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1)
+      ) return;
+
+      const distance = Math.hypot(deltaX, deltaY);
+      const stretchX = deltaX === 0 ? 0.98 : 1.04;
+      const stretchY = deltaY === 0 ? 0.98 : 1.08;
+      const overshoot = Math.min(3, distance * 0.035);
+      const overshootX = deltaX === 0 ? 0 : Math.sign(deltaX) * overshoot;
+      const overshootY = deltaY === 0 ? 0 : Math.sign(deltaY) * overshoot;
+      const duration = Math.min(460, Math.max(340, 300 + distance * 0.45));
+      const animation = pill.animate(
+        [
+          { transform: currentTransform, offset: 0 },
+          {
+            transform: `translate3d(${targetX + overshootX}px, ${targetY + overshootY}px, 0) scale(${stretchX}, ${stretchY})`,
+            offset: 0.78,
+            easing: "cubic-bezier(0.18, 0.82, 0.28, 1)",
+          },
+          {
+            transform: `translate3d(${targetX}px, ${targetY}px, 0) scale(1, 1)`,
+            offset: 1,
+          },
+        ],
+        { duration, easing: "cubic-bezier(0.2, 0.75, 0.25, 1)" },
+      );
+      activePillAnimationRef.current = animation;
+      animation.onfinish = () => {
+        if (activePillAnimationRef.current === animation) {
+          activePillAnimationRef.current = null;
+          animation.cancel();
+        }
+      };
+    };
+
+    syncPill(false);
+    const syncWithoutMotion = () => syncPill(false);
+    let scrollEndTimer: number | null = null;
+    const syncOnScroll = () => {
+      pill.dataset.scrolling = "true";
+      if (activePillScrollFrameRef.current !== null) {
+        cancelAnimationFrame(activePillScrollFrameRef.current);
+      }
+      activePillScrollFrameRef.current = requestAnimationFrame(() => {
+        activePillScrollFrameRef.current = null;
+        syncWithoutMotion();
+      });
+      if (scrollEndTimer !== null) window.clearTimeout(scrollEndTimer);
+      scrollEndTimer = window.setTimeout(() => {
+        delete pill.dataset.scrolling;
+        scrollEndTimer = null;
+      }, 140);
+    };
+    scrollViewport.addEventListener("scroll", syncOnScroll, { passive: true });
+    resizeObserver = new ResizeObserver(syncWithoutMotion);
+    resizeObserver.observe(navigation);
+    window.addEventListener("resize", syncWithoutMotion);
+    syncActivePillRef.current = syncPill;
+
+    return () => {
+      scrollViewport.removeEventListener("scroll", syncOnScroll);
+      if (activePillScrollFrameRef.current !== null) {
+        cancelAnimationFrame(activePillScrollFrameRef.current);
+        activePillScrollFrameRef.current = null;
+      }
+      if (scrollEndTimer !== null) window.clearTimeout(scrollEndTimer);
+      delete pill.dataset.scrolling;
+      window.removeEventListener("resize", syncWithoutMotion);
+      resizeObserver.disconnect();
+      syncActivePillRef.current = null;
+      activePillAnimationRef.current?.cancel();
+      activePillAnimationRef.current = null;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const animate = activePillInitializedRef.current;
+    activePillInitializedRef.current = true;
+    syncActivePillRef.current?.(animate);
+  }, [location.pathname]);
+
   return <PageLayout className={styles.root}>
     <Card as="aside" className={styles.menuCard}>
-      <nav className={styles.navigation} aria-label={t("主菜单")}>
+      <nav ref={navigationRef} className={styles.navigation} aria-label={t("主菜单")}>
+        <span ref={activePillRef} className={styles.activePill} aria-hidden="true" />
         <VirtualList
           items={menuItems}
           itemKey={(item) => item.kind === "group" ? `group-${item.label}` : item.path}

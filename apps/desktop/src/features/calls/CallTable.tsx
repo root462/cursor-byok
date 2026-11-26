@@ -4,9 +4,24 @@ import type { LlmCall } from "../../shared/api";
 import { DataTable } from "../../shared/ui/DataTable";
 import type { CallColumnSpec } from "./callColumns";
 import { ColumnSettings } from "./ColumnSettings";
+import styles from "./CallTable.module.scss";
 
-/** 全部列都显示时的基准宽度，按可见列数等比缩放表格最小宽度。 */
-const FULL_TABLE_MIN_WIDTH = 4420;
+/** 列宽优先按信息密度设定，未单独配置的扩展列留出可读宽度。 */
+const DEFAULT_COLUMN_WIDTH = 148;
+const COLUMN_WIDTHS: Record<string, number> = {
+  status: 92,
+  actions: 52,
+  display_name: 150,
+  usage_cost: 300,
+  created_at: 174,
+  model_id: 150,
+  reasoning_effort: 100,
+  fast: 64,
+  call_kind: 118,
+  client: 116,
+  route: 92,
+  duration: 96,
+};
 
 export function CallTable({ calls, columns, hidden, onHiddenChange }: {
   calls: LlmCall[];
@@ -27,14 +42,19 @@ export function CallTable({ calls, columns, hidden, onHiddenChange }: {
     setSelectedCallId((current) => (current === call.call_id ? null : call.call_id));
   };
 
-  const visible = columns.filter((spec) => !hidden.has(spec.key));
+  const visible = columns.filter((spec) => spec.fixed || !hidden.has(spec.key));
+  const tableMinWidth = visible.reduce(
+    (width, spec) => width + (COLUMN_WIDTHS[spec.key] ?? DEFAULT_COLUMN_WIDTH),
+    0,
+  );
   return <DataTable
     rows={calls}
     columns={visible.map((spec) => spec.column)}
+    tableClassName={styles.callsTable}
     rowKey={(call) => call.call_id}
     selectedKey={selectedCallId}
     onRowClick={handleRowClick}
-    minWidth={Math.max(560, Math.round(FULL_TABLE_MIN_WIDTH * visible.length / columns.length))}
+    minWidth={Math.max(560, tableMinWidth)}
     footerExtra={onHiddenChange ? <ColumnSettings specs={columns} hidden={hidden} onChange={onHiddenChange} /> : undefined}
   />;
 }

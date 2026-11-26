@@ -12,6 +12,43 @@
   gap: 8px;
 }
 
+.takeoverActions .takeoverSwitch {
+  --track-width: 36px;
+  --thumb-size: 16px;
+  --thumb-inset: 3px;
+  width: var(--track-width);
+  height: calc(var(--thumb-size) + 2 * var(--thumb-inset));
+  border: 0;
+  background-color: color-mix(in srgb, var(--vscode-foreground) 26%, transparent);
+  box-shadow: none;
+  transition: background-color 160ms ease;
+
+  &[data-checked] {
+    background-color: var(--vscode-button-background);
+    box-shadow: none;
+  }
+
+  > span {
+    top: var(--thumb-inset);
+    left: var(--thumb-inset);
+    width: var(--thumb-size);
+    height: var(--thumb-size);
+    box-shadow: 0 1px 2px rgb(15 23 42 / 24%);
+    transition-duration: 160ms;
+  }
+
+  &[data-checked] > span {
+    transform: translateX(calc(var(--track-width) - var(--thumb-size) - 2 * var(--thumb-inset)));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &,
+    > span {
+      transition: none;
+    }
+  }
+}
+
 .takeoverStatus {
   // 保持固定宽度：状态文字在“已接管 / 未接管”之间切换时工具条不会左右抽动。
   min-width: 39px;
@@ -192,19 +229,27 @@
     font-size: type.$font-size-2xs;
   }
 }
+.modelRow[data-model-draggable],
+.modelCard[data-model-draggable] {
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+.modelRow[data-model-cross-target],
+.modelCard[data-model-cross-target] {
+  transform: scale(0.96);
+  transform-origin: center;
+  opacity: 0.76;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
 .modelCard {
   position: relative;
   padding: 16px;
-
-  &[data-sortable="true"] {
-    cursor: grab;
-    -webkit-user-select: none;
-    user-select: none;
-
-    &:active {
-      cursor: grabbing;
-    }
-  }
 
   button,
   a,
@@ -366,8 +411,86 @@
     opacity: 0.15;
   }
 }
+.sortFallback {
+  width: min(240px, calc(100vw - 32px)) !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  padding: 8px 12px !important;
+  overflow: hidden;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, white 8%) !important;
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 62%, transparent) !important;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 24%), 0 2px 8px rgb(15 23 42 / 12%) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+  scale: 0.92;
+  opacity: 0.98 !important;
+  pointer-events: none !important;
+
+  .modelCardContent {
+    min-height: 0;
+    height: 100%;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .modelCardTop {
+    justify-content: flex-start;
+    gap: 9px;
+  }
+
+  .modelAvatar {
+    flex-basis: 25px;
+    width: 25px;
+    height: 25px;
+  }
+
+  .modelCardNameText {
+    font-size: type.$font-size-xs;
+  }
+
+  .modelCardModelId,
+  .modelTypeBadge,
+  .modelCardTest,
+  .modelCardActions {
+    display: none !important;
+  }
+}
+
+.sortFallback.modelRow {
+  width: min(260px, calc(100vw - 32px)) !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  padding: 8px 12px !important;
+  flex-wrap: nowrap;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 62%, transparent) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, white 8%) !important;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 24%), 0 2px 8px rgb(15 23 42 / 12%) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+  pointer-events: none !important;
+  scale: 0.92;
+
+  .modelRowLeft {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+  }
+
+  .modelRowName {
+    flex: 1 1 auto;
+  }
+
+  .modelRowModelId,
+  .modelCardTestResult,
+  .modelCardActions {
+    display: none !important;
+  }
+}
+
 .sortGhost {
-  opacity: 0.4;
+  opacity: 0.16;
 }
 .sortChosen {
   border-color: var(--vscode-focusBorder);

@@ -21,6 +21,7 @@ import { PageActions } from "../../shell/PageActions";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { isZcodePluginReady } from "../../shared/utils/zcodeEnvironment";
 import { isOpencodePluginReady } from "../../shared/utils/opencodeEnvironment";
+import { modelInput } from "./modelCopy";
 
 export function CursorSettingsPage() {
   const { models, cursorHarness, cursorBusy, cursorRuntime, plugins } = useAppStore();
@@ -180,7 +181,11 @@ export function CursorSettingsPage() {
     }
     if (!saved) return;
     setEditing(saved);
-    await testModel(saved);
+    const result = await testModel(saved);
+    if (result === "success") {
+      setDraft(null);
+      setEditing(null);
+    }
     await appStore.refresh();
   };
   const testAllModels = async () => {
@@ -274,6 +279,7 @@ export function CursorSettingsPage() {
   };
 
   const list = <CursorModelCards
+    client="cursor"
     models={models}
     grouping={grouping}
     disabled={cursorBusy}
@@ -319,6 +325,7 @@ export function CursorSettingsPage() {
         <span className={styles.takeoverStatus}>{cursorTakenOver ? t("已接管") : t("未接管")}</span>
         <TooltipTrigger label={takeoverLabel}>
           <Switch
+            className={styles.takeoverSwitch}
             checked={cursorTakenOver}
             disabled={cursorBusy || (!cursorTakenOver && !caReady)}
             label={takeoverLabel}
@@ -384,11 +391,6 @@ export function CursorSettingsPage() {
     </Modal>
     <ConfirmDialog open={deleting !== null} title={t("删除模型")} cancelLabel={t("取消")} confirmLabel={t("删除")} onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void appStore.deleteModel(deleting.model_hash); setDeleting(null); }}><p>{t("确定删除这个模型吗？")}</p></ConfirmDialog>
   </>;
-}
-
-function modelInput(model: Model): ModelInput {
-  const { model_hash: _hash, created_at_ms: _created, updated_at_ms: _updated, ...input } = model;
-  return input;
 }
 
 /** 组内所有模型取值一致时返回该值,否则返回 null(表单留空表示保持不变)。 */

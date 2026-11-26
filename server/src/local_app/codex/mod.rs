@@ -12,7 +12,6 @@ pub use paths::{get_codex_catalog_path, get_codex_config_dir, get_codex_config_p
 
 #[derive(Clone, Debug, Serialize)]
 pub struct CodexHarnessStatus {
-    pub installed: bool,
     pub config_path: String,
     pub catalog_path: String,
     pub configured_models: usize,
@@ -38,7 +37,6 @@ impl CodexHarness {
         let models = self.store.client_models("codex").await?;
         let config_path = get_codex_config_path();
         let catalog_path = get_codex_catalog_path();
-        let installed = config_path.parent().map(|p| p.exists()).unwrap_or(false);
         let settings_applied = match self.service_addr.gateway_base() {
             Some(base) => config::is_codex_settings_applied(&base),
             None => false,
@@ -46,7 +44,6 @@ impl CodexHarness {
         let current_model = models.first().map(|m| m.model_id.clone());
 
         Ok(CodexHarnessStatus {
-            installed,
             config_path: config_path.to_string_lossy().to_string(),
             catalog_path: catalog_path.to_string_lossy().to_string(),
             configured_models: models.len(),

@@ -21,7 +21,10 @@ import { appStore, useAppStore } from "../../shared/store/appStore";
 import { isZcodePluginReady } from "../../shared/utils/zcodeEnvironment";
 import { isOpencodePluginReady } from "../../shared/utils/opencodeEnvironment";
 
-export type ClientTarget = "claude" | "codex";
+import { useModelDrag } from "./ModelDrag";
+import { modelClients, modelInput, type ModelClient } from "./modelCopy";
+
+export type ClientTarget = Exclude<ModelClient, "cursor">;
 
 type ClientSettingsPageProps = {
   client: ClientTarget;
@@ -32,6 +35,9 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(false);
   const message = useMessage();
+  const { copyRevision } = useModelDrag();
+  const modelCopyRevision = copyRevision[client];
+  const modelLoadId = useRef(0);
   const [draft, setDraft] = useState<CursorModelDraft | null>(null);
   const [editing, setEditing] = useState<Model | null>(null);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
@@ -53,26 +59,27 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
   const activeModelTests = useRef(new Map<string, { testId: string; controller: AbortController; cancelling: boolean }>());
 
   const isClaude = client === "claude";
-  const clientName = isClaude ? "Claude CLI" : "Codex Desktop";
+  const clientName = modelClients[client];
   const harness = isClaude ? claudeHarness : codexHarness;
   const takenOver = harness?.settings_applied ?? false;
   const takeoverLabel = takenOver ? t("关闭接管 {name}", { name: clientName }) : t("开启接管 {name}", { name: clientName });
 
   const loadModels = useCallback(async () => {
+    const loadId = ++modelLoadId.current;
     setLoading(true);
     try {
       const list = await api.clientModels(client);
-      setModels(list);
+      if (loadId === modelLoadId.current) setModels(list);
     } catch (cause) {
-      message(errorText(cause));
+      if (loadId === modelLoadId.current) message(errorText(cause));
     } finally {
-      setLoading(false);
+      if (loadId === modelLoadId.current) setLoading(false);
     }
   }, [client, message]);
 
   useEffect(() => {
     void loadModels();
-  }, [loadModels]);
+  }, [loadModels, modelCopyRevision]);
 
   const testTargets = models.map((model) => ({ model_hash: model.model_hash, display_name: model.display_name }));
   const providerGroups = cursorModelGroups(models, "provider");
@@ -219,7 +226,11 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
     }
     if (!saved) return;
     setEditing(saved);
-    await testModel(saved);
+    const result = await testModel(saved);
+    if (result === "success") {
+      setDraft(null);
+      setEditing(null);
+    }
   };
 
   const testAllModels = async () => {
@@ -324,6 +335,7 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
   };
 
   const list = <CursorModelCards
+    client={client}
     models={models}
     grouping={grouping}
     disabled={loading}
@@ -364,6 +376,7 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
         <span className={styles.takeoverStatus}>{takenOver ? t("已接管") : t("未接管")}</span>
         <TooltipTrigger label={takeoverLabel}>
           <Switch
+            className={styles.takeoverSwitch}
             checked={takenOver}
             disabled={loading}
             label={takeoverLabel}
@@ -454,11 +467,6 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
         : t("检测到 {name} 正在运行，且它只在启动时读取配置。是否确认接管并重启该应用？", { name: clientName })}</p>
     </ConfirmDialog>
   </>;
-}
-
-function modelInput(model: Model): ModelInput {
-  const { model_hash: _hash, created_at_ms: _created, updated_at_ms: _updated, ...input } = model;
-  return input;
 }
 
 function sharedValue(values: string[]): string | null {

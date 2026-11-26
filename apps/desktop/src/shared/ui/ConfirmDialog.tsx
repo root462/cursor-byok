@@ -20,6 +20,7 @@ export function ConfirmDialog({ id, open, title, children, busy, wide, cancelLab
     title={title}
     busy={busy}
     wide={wide}
+    compact={!wide}
     role="alertdialog"
     ariaDescribedBy={contentId}
     initialFocus="submit"

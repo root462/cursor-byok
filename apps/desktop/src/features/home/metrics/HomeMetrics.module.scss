@@ -19,6 +19,16 @@
   align-items: stretch;
   overflow: hidden;
   font-family: var(--oa-metrics-font);
+
+  // Keep the glass surface without the inset frame that cuts across the metrics.
+  &.root {
+    border: 1px solid var(--vscode-sideBar-border);
+    box-shadow: none;
+  }
+
+  &::before {
+    content: none;
+  }
 }
 
 .metric {

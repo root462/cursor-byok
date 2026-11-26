@@ -81,6 +81,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       column: {
         key: "status",
         header: t("状态"),
+        className: styles.statusCol,
         render: (call) => (
           <span
             className={[styles.status, styles[call.status]]
@@ -122,6 +123,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       column: {
         key: "display_name",
         header: t("显示名称"),
+        className: styles.displayNameCol,
         render: (call) => call.display_name,
         title: (call) => call.display_name,
       },
@@ -149,6 +151,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       column: {
         key: "created_at",
         header: t("时间"),
+        className: styles.timeCol,
         render: (call) => new Date(call.created_at_ms).toLocaleString(),
       },
     },
@@ -158,6 +161,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       column: {
         key: "model_id",
         header: t("模型名称"),
+        className: styles.modelCol,
         render: (call) => call.model_id,
         title: (call) => call.model_id,
       },
@@ -168,6 +172,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       column: {
         key: "reasoning_effort",
         header: t("思考强度"),
+        className: styles.reasoningCol,
         render: (call) => value(call.reasoning_effort),
       },
     },
@@ -195,6 +200,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       column: {
         key: "client",
         header: t("来源"),
+        className: styles.clientCol,
         render: (call) => clientLabel(call.client),
         title: (call) => clientLabel(call.client),
       },
@@ -285,6 +291,7 @@ export function createCallColumns(onDetails: (call: LlmCall) => void): CallColum
       column: {
         key: "duration",
         header: t("耗时"),
+        className: styles.durationCol,
         render: (call) => milliseconds(call.duration_ms),
       },
     },

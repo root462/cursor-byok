@@ -234,7 +234,7 @@ function PluginCard({ plugin, onOpen }: {
       <div className={styles.cardActions}>
         <TruncatedButton
           size="small"
-          variant="primary"
+          variant="secondary"
           className={styles.addAccount}
           label={t("添加账号")}
           onClick={() => onOpen(plugin.id, "add")}

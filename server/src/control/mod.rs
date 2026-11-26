@@ -295,6 +295,14 @@ pub fn api_router(service: ControlService) -> Router {
             post(models::test_client).delete(models::cancel),
         )
         .route(
+            "/__byok-api__/api/harness/claude/app",
+            get(harness::claude_app_info),
+        )
+        .route(
+            "/__byok-api__/api/harness/codex/app",
+            get(harness::codex_app_info),
+        )
+        .route(
             "/__byok-api__/api/harness/claude/status",
             get(harness::claude_status),
         )

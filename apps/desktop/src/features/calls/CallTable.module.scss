@@ -1,33 +1,99 @@
 @use "../../styles/typography" as type;
 
 .status {
-  // 状态胶囊：玻璃外观来自 .liquid（与 CursorPresetChips 的预设胶囊同材质）。
-  composes: liquid from global;
-  --liquid-radius: 99px;
-  --liquid-padding: 3px 7px;
-  --liquid-min-width: 0;
-  --liquid-min-height: 0;
-  color: var(--vscode-descriptionForeground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 99px;
+  background: color-mix(in srgb, currentColor 11%, transparent);
+  box-shadow: none;
   font-size: type.$font-size-xs;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .completed { color: #56b870; }
 .failed,
 .error { color: var(--vscode-errorForeground, #f48771); }
 
-.actionCol {
-  width: 52px;
-  min-width: 52px;
-  max-width: 52px;
-  text-align: center;
-  padding: 0 4px !important;
-}
+.callsTable {
+  table-layout: fixed;
 
-/* 单次调用的 Token 明细与花费：Token 用小字，花费右对齐便于纵向比对。 */
-.usageCostCol {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
+  th,
+  td {
+    width: 148px;
+    min-width: 148px;
+    max-width: 148px;
+    vertical-align: middle;
+  }
+
+  th {
+    letter-spacing: 0.01em;
+  }
+
+  .statusCol {
+    width: 92px;
+    min-width: 92px;
+    max-width: 92px;
+    text-align: center;
+  }
+
+  .displayNameCol {
+    width: 150px;
+    min-width: 150px;
+    max-width: 150px;
+  }
+
+  .timeCol {
+    width: 174px;
+    min-width: 174px;
+    max-width: 174px;
+  }
+
+  .reasoningCol {
+    width: 100px;
+    min-width: 100px;
+    max-width: 100px;
+  }
+
+  .modelCol {
+    width: 150px;
+    min-width: 150px;
+    max-width: 150px;
+  }
+
+  .clientCol {
+    width: 116px;
+    min-width: 116px;
+    max-width: 116px;
+  }
+
+  .durationCol {
+    width: 96px;
+    min-width: 96px;
+    max-width: 96px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .actionCol {
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    text-align: center;
+    padding: 0 4px !important;
+  }
+
+  /* 单次调用的 Token 明细与花费：Token 用小字，花费右对齐便于纵向比对。 */
+  .usageCostCol {
+    width: 300px;
+    min-width: 300px;
+    max-width: 300px;
+  }
 }
 
 .usageCost {

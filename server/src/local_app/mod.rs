@@ -2,6 +2,7 @@
 mod account;
 mod app_info;
 mod ca;
+mod client_app_info;
 pub mod claude;
 pub mod codex;
 mod process;
@@ -22,6 +23,7 @@ use crate::{
 use self::{ca::CaManager, proxy::ProxyRuntime};
 
 pub use app_info::{detect_cursor_app, CursorAppInfo};
+pub use client_app_info::{detect_claude_app, detect_codex_app, ClientAppInfo};
 pub use claude::{get_claude_config_dir, ClaudeHarness, ClaudeHarnessStatus};
 pub use codex::{get_codex_config_dir, CodexHarness, CodexHarnessStatus};
 pub use process::{

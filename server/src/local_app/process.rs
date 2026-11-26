@@ -59,8 +59,7 @@ pub async fn is_cursor_running() -> bool {
 /// Codex Desktop 当前的发布形态是一个 bundle 名为 `ChatGPT.app` 的应用，
 /// 可执行文件叫 `ChatGPT`、bundle id 是 `com.openai.codex`。按进程名找会全部落空，
 /// 所以 macOS 上统一按 bundle id 识别与退出。
-#[cfg(target_os = "macos")]
-const CODEX_BUNDLE_ID: &str = "com.openai.codex";
+pub(super) const CODEX_BUNDLE_ID: &str = "com.openai.codex";
 
 /// 按 bundle id 查主进程 PID；没运行时返回 `None`。
 ///
