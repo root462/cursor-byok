@@ -207,7 +207,7 @@ function OpencodeLoginCard({ pluginId, resource, onConfigured }: {
     <span>{t("通过官方 OpenCode 协议接入，使用 OpenCode 模型。")}</span>
     <div className={styles.actions}>
       <Button
-        variant="primary"
+        className={styles.loginButton}
         disabled={submitting}
         onClick={() => void startLogin()}
       >
@@ -305,7 +305,7 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
       </button>
     </div>}
     <div className={styles.actions}>
-      <Button variant="primary" disabled={status === "starting" || status === "polling"} onClick={() => void start()}>
+      <Button className={styles.loginButton} disabled={status === "starting" || status === "polling"} onClick={() => void start()}>
         {status === "starting" ? t("正在申请授权码…") : status === "polling" ? t("等待网页端确认授权中…") : t("开始登录")}
       </Button>
       {begun && status === "polling" && <Button onClick={() => void api.openExternalUrl(begun.verificationUrlComplete || begun.verificationUrl)}>{t("打开授权网页")}</Button>}

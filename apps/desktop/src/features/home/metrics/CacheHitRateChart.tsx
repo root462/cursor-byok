@@ -1,12 +1,13 @@
 import type { EChartsCoreOption } from "echarts/core";
 import { useEffect, useMemo, useState } from "react";
 import { EChart } from "../charts/EChart";
+import { RollingNumber } from "./RollingNumber";
 import styles from "./CacheHitRateChart.module.scss";
 
 const valueColor = "#40c463";
 const trackColor = "rgba(139, 148, 158, 0.20)";
 
-export function CacheHitRateChart({ rate, animationKey = 0 }: { rate: number; animationKey?: number }) {
+export function CacheHitRateChart({ rate, animationKey = 0 }: { rate: number; animationKey?: string | number }) {
   const finiteRate = Number.isFinite(rate) ? rate : 0;
   const percentage = Math.max(0, Math.min(100, finiteRate * 100));
   const [displayedPercentage, setDisplayedPercentage] = useState(0);
@@ -22,7 +23,7 @@ export function CacheHitRateChart({ rate, animationKey = 0 }: { rate: number; an
 
   const option = useMemo<EChartsCoreOption>(() => ({
     animationDuration: 0,
-    animationDurationUpdate: displayedPercentage > 0 ? 1_000 : 0,
+    animationDurationUpdate: displayedPercentage > 0 ? 1_400 : 0,
     animationEasing: "cubicOut",
     animationEasingUpdate: "cubicOut",
     series: [{
@@ -57,6 +58,12 @@ export function CacheHitRateChart({ rate, animationKey = 0 }: { rate: number; an
 
   return <div className={styles.root} role="img" aria-label={t("缓存命中率 {rate}", { rate: label })}>
     <EChart className={styles.chart} option={option} />
-    <div className={styles.label}>{label}</div>
+    <RollingNumber
+      className={styles.label}
+      animationKey={animationKey}
+      value={displayedPercentage}
+      format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+      suffix="%"
+    />
   </div>;
 }

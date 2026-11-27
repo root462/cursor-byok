@@ -100,8 +100,8 @@
   --liquid-padding: 0;
   --liquid-min-width: 0;
   --liquid-min-height: 0;
-  // 弹窗底色通透化，让下方的液态动态渐变背景自然透出
-  --liquid-bg: rgb(255 255 255 / 28%);
+  // 弹窗使用主题表面色，避免彩色背景透出造成渐变效果。
+  --liquid-bg: var(--vscode-editorWidget-background);
   // 深色描边减淡：让上面那道白色高光当主角，轮廓才不会像贴了张黑框。
   --liquid-border: rgb(15 23 42 / 12%);
   // 面板面积大，模糊半径跟着放大，否则边缘透出来的文字轮廓会抢读。
@@ -137,8 +137,7 @@
     flex: 0 0 auto;
     padding: 10px 18px;
     border-bottom: 1px solid rgb(15 23 42 / 8%);
-    // 顶部再压一层极淡的渐隐白：标题带和内容区之间有玻璃分层，但不是一条死白带。
-    background: linear-gradient(180deg, rgb(255 255 255 / 28%), rgb(255 255 255 / 0%));
+    background: transparent;
     font-size: type.$font-size-base;
     font-weight: 630;
   }
@@ -150,11 +149,10 @@
     gap: 8px;
     padding: 12px 18px;
     border-top: 1px solid rgb(15 23 42 / 8%);
-    background: linear-gradient(0deg, rgb(255 255 255 / 28%), rgb(255 255 255 / 0%));
+    background: transparent;
 
     :global([data-theme*="dark"]) & {
       border-top-color: rgba(255, 255, 255, 0.08);
-      background: linear-gradient(0deg, rgba(255, 255, 255, 0.04), transparent);
     }
 
     button,
@@ -162,9 +160,17 @@
       min-height: 28px !important;
       height: 28px !important;
       padding: 0 14px !important;
+      border-radius: 9999px !important;
+      background: color-mix(in srgb, var(--vscode-editorWidget-background) 96%, var(--vscode-foreground) 4%) !important;
+      border: 1px solid color-mix(in srgb, var(--vscode-foreground) 14%, transparent) !important;
+      color: var(--vscode-foreground) !important;
+      box-shadow:
+        inset 0 1px 0 color-mix(in srgb, var(--vscode-editorWidget-background) 84%, white 16%),
+        0 1px 3px rgb(15 23 42 / 8%) !important;
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
       font-size: type.$font-size-xs !important;
       font-weight: 500 !important;
-      border-radius: 9999px !important;
       box-sizing: border-box !important;
       display: inline-flex !important;
       align-items: center !important;
@@ -201,48 +207,10 @@
   }
 }
 
-/* 全局 .liquid 的顶部渐亮是给 3rem 高的小胶囊写的（0→38% 高度），
-   摊到 600px 高的弹窗上等于上半屏被白雾盖住，玻璃的透色全没了。
-   这里把它收到顶部一小段，只当作玻璃上沿的反光。 */
+/* 弹窗采用主题实色，不叠加彩色渐变或斜向高光。 */
 .dialog.dialog {
-  background-image:
-    linear-gradient(
-      180deg,
-      rgb(255 255 255 / 26%) 0%,
-      rgb(255 255 255 / 6%) 12%,
-      rgb(255 255 255 / 0%) 28%
-    ),
-    radial-gradient(55% 48% at 14% 22%, rgba(255, 145, 190, 0.36) 0%, rgba(255, 145, 190, 0) 72%),
-    radial-gradient(52% 48% at 86% 20%, rgba(185, 145, 255, 0.34) 0%, rgba(185, 145, 255, 0) 72%),
-    radial-gradient(55% 50% at 22% 82%, rgba(130, 215, 255, 0.32) 0%, rgba(130, 215, 255, 0) 72%),
-    radial-gradient(50% 48% at 82% 80%, rgba(110, 235, 220, 0.28) 0%, rgba(110, 235, 220, 0) 72%);
-
-  :global(:root[data-theme*="dark"]) & {
-    background-image:
-      linear-gradient(
-        180deg,
-        rgb(255 255 255 / 8%) 0%,
-        rgb(255 255 255 / 0%) 24%
-      ),
-      radial-gradient(55% 48% at 14% 22%, rgba(255, 95, 145, 0.16) 0%, transparent 72%),
-      radial-gradient(52% 48% at 86% 20%, rgba(168, 85, 247, 0.16) 0%, transparent 72%),
-      radial-gradient(55% 50% at 22% 82%, rgba(56, 180, 255, 0.15) 0%, transparent 72%);
-  }
-}
-
-/* 斜向反光：玻璃被光扫过的那种不匀。
-   用 .liquid 空着的 ::after 承载（它原本只有 inset: 0），
-   内容元素在 .liquid 里都是 z-index: 1，文字不会被这层高光盖住。
-   双写类名提高权重，确保压过 liquid-glass.css 里的 .liquid::after。 */
-.dialog.dialog::after {
-  background: linear-gradient(
-    118deg,
-    rgb(255 255 255 / 46%) 0%,
-    rgb(255 255 255 / 6%) 18%,
-    rgb(255 255 255 / 0%) 42%,
-    rgb(255 255 255 / 0%) 74%,
-    rgb(255 255 255 / 16%) 100%
-  );
+  background-image: none;
+  background-color: var(--vscode-editorWidget-background);
 }
 
 .wide {

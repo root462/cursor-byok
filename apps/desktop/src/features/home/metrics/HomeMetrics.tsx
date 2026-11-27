@@ -3,6 +3,7 @@ import { Icon } from "../../../shared/ui/Icon";
 import { useTooltip, type TooltipAnchor } from "../../../shared/ui/Tooltip";
 import { informationOutlineIcon } from "../../../shared/ui/icons";
 import { CacheHitRateChart } from "./CacheHitRateChart";
+import { RollingNumber } from "./RollingNumber";
 import styles from "./HomeMetrics.module.scss";
 
 export type HomeMetricsData = {
@@ -60,7 +61,7 @@ function InfoTooltip({ content }: { content: string }) {
   ><Icon icon={informationOutlineIcon} size="1.1em" /></button>;
 }
 
-export function HomeMetrics({ data, refreshVersion = 0 }: { data: HomeMetricsData; refreshVersion?: number }) {
+export function HomeMetrics({ data, animationKey = 0 }: { data: HomeMetricsData; animationKey?: string | number }) {
   const inputTokens = Math.max(0, data.promptTokens - data.cacheReadTokens - data.cacheWriteTokens);
   const outputTokens = Math.max(0, data.tokenUsage - data.promptTokens);
   const defaultCacheHitRate = calculateRate(data.cacheReadTokens, data.cacheReadTokens + inputTokens);
@@ -127,12 +128,18 @@ export function HomeMetrics({ data, refreshVersion = 0 }: { data: HomeMetricsDat
     <section className={styles.root} aria-label={t("调用统计")}>
       <article className={styles.metric}>
         <div className={styles.label}>{t("缓存命中率")}<InfoTooltip content={cacheTooltip} /></div>
-        <CacheHitRateChart rate={defaultCacheHitRate ?? 0} animationKey={refreshVersion} />
+        <CacheHitRateChart rate={defaultCacheHitRate ?? 0} animationKey={animationKey} />
       </article>
       <article className={styles.metric}>
         <div className={styles.label}>{t("LLM 调用")}<InfoTooltip content={callsTooltip} /></div>
         <div className={styles.body}>
-          <div className={styles.value} title={formatInteger(data.llmCalls)}>{formatCompactInteger(data.llmCalls)}</div>
+          <RollingNumber
+            className={styles.value}
+            animationKey={animationKey}
+            title={formatInteger(data.llmCalls)}
+            value={data.llmCalls}
+            format={{ notation: "compact", maximumFractionDigits: 1 }}
+          />
           <div className={styles.secondary}>{t("成功 {successful} / 异常 {failed}", {
             successful: formatCompactInteger(data.successfulCalls),
             failed: formatCompactInteger(data.failedCalls),
@@ -142,14 +149,27 @@ export function HomeMetrics({ data, refreshVersion = 0 }: { data: HomeMetricsDat
       <article className={styles.metric}>
         <div className={styles.label}>{t("Token 消耗")}<InfoTooltip content={tokensTooltip} /></div>
         <div className={styles.body}>
-          <div className={styles.value} title={formatInteger(data.tokenUsage)}>{formatCompactInteger(data.tokenUsage)}</div>
+          <RollingNumber
+            className={styles.value}
+            animationKey={animationKey}
+            title={formatInteger(data.tokenUsage)}
+            value={data.tokenUsage}
+            format={{ notation: "compact", maximumFractionDigits: 1 }}
+          />
           <div className={styles.secondary}>{t("提示词 {tokens}", { tokens: formatCompactInteger(data.promptTokens) })}</div>
         </div>
       </article>
       <article className={styles.metric}>
         <div className={styles.label}>{t("价值估算")}<InfoTooltip content={costTooltip} /></div>
         <div className={styles.body}>
-          <div className={styles.value} title={formatUSD(totalCost)}>{formatUSD(totalCost)}</div>
+          <RollingNumber
+            className={styles.value}
+            animationKey={animationKey}
+            title={formatUSD(totalCost)}
+            value={totalCost}
+            format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+            prefix="$"
+          />
           <div className={styles.secondary}>{t("缓存读写 {cost}", { cost: formatUSD(cacheCost) })}</div>
         </div>
       </article>

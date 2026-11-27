@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { api, configuredPluginModels, type Overview } from "../../shared/api";
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
 import { DailyTokenUsageChart } from "./charts/DailyTokenUsageChart";
@@ -7,6 +7,7 @@ import { PageContent } from "../../shell/layout/PageContent";
 import type { VirtualPageSection } from "../../shell/layout/VirtualPage";
 import { OverviewTimeRangeFilter, type OverviewRangePreset, type QuickPreset } from "./overview/OverviewTimeRangeFilter";
 import { PageActions } from "../../shell/PageActions";
+import { ActiveRouteContext } from "../../shell/ActiveRouteContext";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { formatTimeInput, parseTimeInput } from "../../shared/utils/parseTimeInput";
 import { modelProviderName } from "../../shared/utils/modelProvider";
@@ -52,6 +53,7 @@ function presetRange(preset: Exclude<OverviewRangePreset, "custom">, now = new D
 }
 
 export function HomePage() {
+  const activeRoute = useContext(ActiveRouteContext);
   const { overview, busy, models, plugins } = useAppStore();
   const [preset, setPreset] = useState<OverviewRangePreset>("today");
   const [quick, setQuick] = useState<QuickPreset | null>(null);
@@ -64,6 +66,8 @@ export function HomePage() {
   const [rangeOverview, setRangeOverview] = useState<Overview | null>(null);
   const [rangeBusy, setRangeBusy] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [metricsRefreshVersion, setMetricsRefreshVersion] = useState(0);
+  const metricsAnimationKey = `${activeRoute}:${metricsRefreshVersion}`;
   const selectedRange = preset === "custom" ? customRange : presetRange(preset);
 
   useEffect(() => {
@@ -143,6 +147,7 @@ export function HomePage() {
   const refresh = async () => {
     await appStore.refresh();
     setRefreshVersion((version) => version + 1);
+    setMetricsRefreshVersion((version) => version + 1);
   };
   const iconFor = (type: string) => type === "anthropic" ? claudeIcon : openAiIcon;
   const pluginModels = configuredPluginModels(plugins);
@@ -172,7 +177,7 @@ export function HomePage() {
     {
       key: "metrics",
       estimatedHeight: 130,
-      content: <HomeMetrics data={metrics} refreshVersion={refreshVersion} />,
+      content: <HomeMetrics key={metricsAnimationKey} data={metrics} animationKey={metricsAnimationKey} />,
     },
     {
       key: "activity",

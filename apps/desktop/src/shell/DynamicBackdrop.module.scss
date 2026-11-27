@@ -7,10 +7,12 @@
   user-select: none;
   -webkit-user-select: none;
 
-  // Quiet, image-free canvas: a neutral base with barely visible cool light.
+  // Keep the light base; local colour transitions make glass transmission visible.
   background-color: #f4f5f7;
   background-image:
-    radial-gradient(ellipse 68% 52% at 8% 0%, rgb(111 159 235 / 8%), transparent 72%),
-    radial-gradient(ellipse 58% 48% at 100% 8%, rgb(172 151 225 / 6%), transparent 74%),
+    radial-gradient(ellipse 24% 35% at 24% 22%, rgb(125 172 219 / 32%), transparent 75%),
+    radial-gradient(ellipse 27% 30% at 75% 19%, rgb(168 148 207 / 27%), transparent 76%),
+    radial-gradient(ellipse 25% 35% at 54% 55%, rgb(227 183 156 / 24%), transparent 76%),
+    radial-gradient(ellipse 26% 32% at 88% 72%, rgb(141 190 181 / 18%), transparent 76%),
     linear-gradient(145deg, #f8f9fb 0%, #f3f5f7 55%, #f0f2f5 100%);
 }

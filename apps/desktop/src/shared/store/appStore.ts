@@ -3,10 +3,10 @@ import { api, type ClaudeHarnessStatus, type CodexHarnessStatus, type CursorHarn
 import { applyTheme, isThemeId, type ThemeId } from "../theme/theme";
 
 export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = {
-  input_per_million: 5.0,
-  output_per_million: 25.0,
-  cache_read_per_million: 0.5,
-  cache_write_per_million: 6.25,
+  input_per_million: 0,
+  output_per_million: 0,
+  cache_read_per_million: 0,
+  cache_write_per_million: 0,
   models: {},
 };
 

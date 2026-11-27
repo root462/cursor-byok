@@ -9,24 +9,22 @@ import { PageLayout } from "./layout/PageLayout";
 import { Card } from "../shared/ui/Card";
 import { Icon } from "../shared/ui/Icon";
 import {
-  menuCallsActiveIcon,
   menuCallsIcon,
-  menuOverviewActiveIcon,
   menuOverviewIcon,
-  menuPluginsActiveIcon,
   menuPluginsIcon,
-  menuSettingsActiveIcon,
   menuSettingsIcon,
 } from "../shared/ui/icons";
 import { VirtualList } from "../shared/virtual/VirtualList";
 import { useAppStore } from "../shared/store/appStore";
 import { updateStore, useUpdateStore } from "../shared/store/updateStore";
 import styles from "./AppLayout.module.scss";
+import { createStickyNavigationKeyframes } from "./stickyNavigationMotion";
 import { PageActionsTarget } from "./PageActions";
+import { ActiveRouteContext } from "./ActiveRouteContext";
 import { ModelDragProvider, useModelDrag } from "../features/models/ModelDrag";
 import { modelClients, type ModelClient } from "../features/models/modelCopy";
 
-type MenuItemPage = { kind: "page"; path: string; label: string; icon: IconifyIcon | string; activeIcon?: IconifyIcon; client?: ModelClient };
+type MenuItemPage = { kind: "page"; path: string; label: string; icon: IconifyIcon | string; client?: ModelClient };
 type MenuItem =
   | MenuItemPage
   | { kind: "group"; label: string };
@@ -78,16 +76,12 @@ function NavigationRow({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        {({ isActive }) => (
+        {() => (
           <>
             {typeof item.icon === "string" ? (
               <Icon className={styles.menuBrandIcon} src={item.icon} size="1.3em" />
             ) : (
-              <Icon
-                className={styles.menuIcon}
-                icon={isActive && item.activeIcon ? item.activeIcon : item.icon}
-                size="1.3em"
-              />
+              <Icon className={styles.menuIcon} icon={item.icon} size="1.3em" />
             )}
             <span
               ref={containerRef}
@@ -157,15 +151,15 @@ function AppLayoutContent() {
   const [leftActionTarget, setLeftActionTarget] = useState<HTMLDivElement | null>(null);
   const [rightActionTarget, setRightActionTarget] = useState<HTMLDivElement | null>(null);
   const menuItems: MenuItem[] = [
-    { kind: "page", path: "/", label: t("驾驶舱"), icon: menuOverviewIcon, activeIcon: menuOverviewActiveIcon },
-    { kind: "page", path: "/calls", label: t("调用详细"), icon: menuCallsIcon, activeIcon: menuCallsActiveIcon },
+    { kind: "page", path: "/", label: t("驾驶舱"), icon: menuOverviewIcon },
+    { kind: "page", path: "/calls", label: t("调用详细"), icon: menuCallsIcon },
     { kind: "group", label: t("模型配置") },
     { kind: "page", path: "/harness/cursor", label: modelClients.cursor, icon: cursorIconUrl, client: "cursor" },
     { kind: "page", path: "/harness/claude", label: modelClients.claude, icon: claudeIconUrl, client: "claude" },
     { kind: "page", path: "/harness/codex", label: modelClients.codex, icon: codexIconUrl, client: "codex" },
     { kind: "group", label: t("设置") },
-    { kind: "page", path: "/plugins", label: t("插件配置"), icon: menuPluginsIcon, activeIcon: menuPluginsActiveIcon },
-    { kind: "page", path: "/settings", label: t("系统设置"), icon: menuSettingsIcon, activeIcon: menuSettingsActiveIcon },
+    { kind: "page", path: "/plugins", label: t("插件配置"), icon: menuPluginsIcon },
+    { kind: "page", path: "/settings", label: t("系统设置"), icon: menuSettingsIcon },
   ];
 
   useLayoutEffect(() => {
@@ -176,16 +170,24 @@ function AppLayoutContent() {
     const scrollViewport = scrollHost?.firstElementChild as HTMLElement | null;
     if (!scrollViewport) return;
 
+    let previousTarget = "";
     let resizeObserver: ResizeObserver | null = null;
     const syncPill = (animate: boolean) => {
       const activeLink = navigation.querySelector<HTMLElement>('a[aria-current="page"]');
-      if (!activeLink) return;
+      if (!activeLink) {
+        pill.style.visibility = "hidden";
+        activePillAnimationRef.current?.cancel();
+        activePillAnimationRef.current = null;
+        previousTarget = "";
+        return;
+      }
+      const wasVisible = pill.style.visibility === "visible";
+      pill.style.visibility = "visible";
       resizeObserver?.observe(activeLink);
 
       const navigationRect = navigation.getBoundingClientRect();
       const linkRect = activeLink.getBoundingClientRect();
       const currentRect = pill.getBoundingClientRect();
-      const currentTransform = getComputedStyle(pill).transform;
       const targetX = linkRect.left - navigationRect.left;
       const targetY = linkRect.top - navigationRect.top;
       const targetWidth = linkRect.width;
@@ -194,6 +196,11 @@ function AppLayoutContent() {
       const previousY = currentRect.top - navigationRect.top;
       const deltaX = targetX - previousX;
       const deltaY = targetY - previousY;
+      const target = `${targetX},${targetY},${targetWidth},${targetHeight}`;
+      // Layout notifications must not cancel an in-progress route animation
+      // when the destination itself has not moved.
+      if (!animate && target === previousTarget) return;
+      previousTarget = target;
 
       activePillAnimationRef.current?.cancel();
       activePillAnimationRef.current = null;
@@ -202,32 +209,31 @@ function AppLayoutContent() {
       pill.style.setProperty("--active-pill-x", `${targetX}px`);
       pill.style.setProperty("--active-pill-y", `${targetY}px`);
 
+      const hasPreviousPill = wasVisible && (Math.abs(deltaX) >= 1 || Math.abs(deltaY) >= 1);
       if (
-        !animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-        (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1)
+        !animate || !hasPreviousPill ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
       ) return;
 
+      // Move the glass capsule as one elastic body: it leads in the travel
+      // direction, stretches through the journey, then rebounds onto the row.
       const distance = Math.hypot(deltaX, deltaY);
-      const stretchX = deltaX === 0 ? 0.98 : 1.04;
-      const stretchY = deltaY === 0 ? 0.98 : 1.08;
-      const overshoot = Math.min(3, distance * 0.035);
-      const overshootX = deltaX === 0 ? 0 : Math.sign(deltaX) * overshoot;
-      const overshootY = deltaY === 0 ? 0 : Math.sign(deltaY) * overshoot;
-      const duration = Math.min(460, Math.max(340, 300 + distance * 0.45));
       const animation = pill.animate(
-        [
-          { transform: currentTransform, offset: 0 },
+        createStickyNavigationKeyframes(
           {
-            transform: `translate3d(${targetX + overshootX}px, ${targetY + overshootY}px, 0) scale(${stretchX}, ${stretchY})`,
-            offset: 0.78,
-            easing: "cubic-bezier(0.18, 0.82, 0.28, 1)",
+            x: previousX,
+            y: previousY,
+            width: currentRect.width,
+            height: currentRect.height,
           },
           {
-            transform: `translate3d(${targetX}px, ${targetY}px, 0) scale(1, 1)`,
-            offset: 1,
+            x: targetX,
+            y: targetY,
+            width: targetWidth,
+            height: targetHeight,
           },
-        ],
-        { duration, easing: "cubic-bezier(0.2, 0.75, 0.25, 1)" },
+        ),
+        { duration: Math.min(680, Math.max(500, 420 + distance * 0.3)), easing: "linear" },
       );
       activePillAnimationRef.current = animation;
       animation.onfinish = () => {
@@ -340,14 +346,16 @@ function AppLayoutContent() {
         </div>
       </div>
       <PageActionsTarget.Provider value={{ left: leftActionTarget, right: rightActionTarget }}>
-        <KeepAliveRouteOutlet
-          activeCacheKey={location.pathname}
-          include={keptAlivePages}
-          max={keptAlivePages.length}
-          enableActivity
-          containerClassName={styles.keepAliveContainer}
-          cacheNodeClassName={styles.keepAlivePage}
-        />
+        <ActiveRouteContext.Provider value={location.pathname}>
+          <KeepAliveRouteOutlet
+            activeCacheKey={location.pathname}
+            include={keptAlivePages}
+            max={keptAlivePages.length}
+            enableActivity
+            containerClassName={styles.keepAliveContainer}
+            cacheNodeClassName={styles.keepAlivePage}
+          />
+        </ActiveRouteContext.Provider>
       </PageActionsTarget.Provider>
     </main>
   </PageLayout>;

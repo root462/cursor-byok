@@ -25,8 +25,12 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
-  // 侧栏比内容卡片更透：导航不需要压住背景，透一点才看得出是玻璃。
-  --liquid-bg: rgb(255 255 255 / 22%);
+  // 与内容区共用冷灰半透明材质；保留子级选中项的背景采样。
+  --liquid-bg: rgb(156 166 182 / 12%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 85%),
+    inset -1px 0 0 rgb(255 255 255 / 45%),
+    3px 0 18px -10px rgb(35 48 70 / 12%);
 }
 
 .navigation {
@@ -44,11 +48,10 @@
 .activePill {
   position: absolute;
   z-index: 1;
-  top: 0;
-  left: 0;
+  top: var(--active-pill-y, 0px);
+  left: var(--active-pill-x, 6px);
   width: var(--active-pill-width, calc(100% - 12px));
   height: var(--active-pill-height, 36px);
-  transform: translate3d(var(--active-pill-x, 6px), var(--active-pill-y, 0px), 0);
   border: 1px solid rgb(255 255 255 / 48%);
   border-radius: 12px;
   background:
@@ -64,8 +67,7 @@
     0 5px 16px rgb(45 65 95 / 12%),
     0 1px 3px rgb(20 32 52 / 8%);
   pointer-events: none;
-  transform-origin: center;
-  will-change: transform;
+  will-change: left, top, width, height, border-radius;
 
   &::before {
     position: absolute;
@@ -169,7 +171,7 @@
       font-weight: 500;
 
       .menuIcon {
-        color: var(--vscode-button-background);
+        color: inherit;
       }
     }
   }
@@ -340,21 +342,48 @@
   // 这里原来有一条 transform: translateX(6px)，把整条工具条又往窗口边缘推了 6px，
   // 右缘因此比下方卡片的内容网格更靠外，看起来是“顶在边上”。
   // 位置交给 .actionRegion 的 right 决定即可，工具条与卡片同列对齐。
-  // 浮动工具栏：玻璃外观来自 .liquid，用 --liquid-padding 撑开内边距。
-  composes: liquid from global;
+  // 浮动工具栏与卡片共用玻璃折射，用 --liquid-padding 撑开内边距。
+  composes: liquid liquid-refractive from global;
   --liquid-radius: var(--oa-overlay-radius);
   --liquid-padding: 5px 18px;
   --liquid-min-width: 0;
   --liquid-min-height: 0;
 
-  // 保留磨砂背景，去掉 .liquid 自带的内侧高光和描边。
+  // 工具栏独立材质：只承托一层操作，不改变全局卡片的外观。
   &.actions {
-    border-color: transparent;
-    box-shadow: 0 4px 14px rgb(15 23 42 / 8%);
+    --liquid-blur: 6px;
+    border: 1px solid rgb(255 255 255 / 58%);
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 4%) 55%, rgb(58 76 103 / 5%)),
+      rgb(171 184 201 / 12%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 76%),
+      inset 0 -1px 0 rgb(43 61 85 / 12%),
+      0 0 0 1px rgb(43 61 85 / 5%),
+      0 3px 7px -3px rgb(31 47 69 / 16%),
+      0 12px 24px -12px rgb(31 47 69 / 22%);
   }
 
-  &::before {
-    content: none;
+  // 保留按钮尺寸和语义状态，只去掉玻璃内再次叠加的玻璃材质。
+  .pageActions button:global(.liquid) {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+
+    &:hover:not(:disabled) {
+      background: rgb(255 255 255 / 26%);
+    }
+
+    &:active:not(:disabled) {
+      background: rgb(43 61 85 / 9%);
+    }
+  }
+
+  .pageActions button[aria-pressed="true"] {
+    background: rgb(255 255 255 / 54%);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 50%);
   }
 
   // 没有子项时隐藏，避免在没有动作按钮的页面留下空泡泡。

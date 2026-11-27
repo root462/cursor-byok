@@ -36,10 +36,12 @@
   }
 
   .statusCol {
-    width: 92px;
-    min-width: 92px;
-    max-width: 92px;
+    width: 116px;
+    min-width: 116px;
+    max-width: 116px;
     text-align: center;
+    // 状态徽标完整显示，不继承普通文本列的省略号。
+    text-overflow: clip;
   }
 
   .displayNameCol {

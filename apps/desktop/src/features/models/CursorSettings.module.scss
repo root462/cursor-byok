@@ -34,11 +34,8 @@
     width: var(--thumb-size);
     height: var(--thumb-size);
     box-shadow: 0 1px 2px rgb(15 23 42 / 24%);
-    transition-duration: 160ms;
-  }
-
-  &[data-checked] > span {
-    transform: translateX(calc(var(--track-width) - var(--thumb-size) - 2 * var(--thumb-inset)));
+    transform: translateX(var(--thumb-offset)) scaleX(var(--thumb-stretch));
+    transition: transform 420ms var(--switch-spring), box-shadow 220ms ease;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -523,9 +520,22 @@
   grid-column: 1 / -1;
 }
 .discoverButton {
-  min-height: 34px;
-  height: 34px;
+  min-height: 28px;
+  height: 28px;
   flex: 0 0 auto;
+  align-self: center;
+  padding: 0 14px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--vscode-editorWidget-background) 96%, var(--vscode-foreground) 4%);
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  color: var(--vscode-foreground);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--vscode-editorWidget-background) 84%, white 16%),
+    0 1px 3px rgb(15 23 42 / 8%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-size: type.$font-size-xs;
+  font-weight: 500;
   transition: none !important;
   animation: none !important;
   transform: none !important;

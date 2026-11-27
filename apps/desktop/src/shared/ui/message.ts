@@ -2,12 +2,15 @@ const MIN_VISIBLE_MS = 300;
 const EXIT_MS = 200;
 
 export type MessageOptions = {
+  id?: string;
   duration?: number;
+  loading?: boolean;
 };
 
 export type MessageItem = {
   id: string;
   content: string;
+  loading: boolean;
   leaving: boolean;
 };
 
@@ -67,10 +70,10 @@ function showMessage(content: unknown, options: MessageOptions = {}) {
   if (!normalizedContent) return null;
 
   clearTimers();
-  const duration = Number.isFinite(options.duration) ? Math.max(0, options.duration!) : 2400;
-  const id = `message-${Date.now()}-${seed += 1}`;
+  const duration = Number.isFinite(options.duration) ? Math.max(0, options.duration!) : options.loading ? 0 : 2400;
+  const id = options.id ?? `message-${Date.now()}-${seed += 1}`;
   shownAt = Date.now();
-  update({ id, content: normalizedContent, leaving: false });
+  update({ id, content: normalizedContent, loading: options.loading ?? false, leaving: false });
 
   if (duration > 0) {
     dismissTimer = window.setTimeout(() => beginExit(id), Math.max(duration, MIN_VISIBLE_MS));

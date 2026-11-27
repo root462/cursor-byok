@@ -1,38 +1,50 @@
+@use "../../styles/typography" as type;
+
 .wrap {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
 }
 
 .label {
-  font-size: 12px;
+  display: block;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.7));
+  font-size: type.$font-size-2xs;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .chips {
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+  min-width: 0;
   flex-wrap: wrap;
 }
 
 .chip {
   composes: liquid from global;
   --liquid-radius: 999px;
-  --liquid-padding: 3px 10px;
+  --liquid-padding: 0 10px;
   --liquid-min-width: 0;
-  --liquid-min-height: 0;
+  --liquid-min-height: 26px;
   --liquid-blur: 8px;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px;
+  min-height: 26px;
+  height: 26px;
+  padding: 0 10px;
   color: inherit;
-  font-size: 12px;
+  font-size: type.$font-size-2xs;
+  line-height: 1;
   cursor: pointer;
 
-  // 彻底禁用任何悬浮动画、位移与悬浮效果
+  // 预设按钮保持静态，避免悬浮时改变布局或产生位移。
   transition: none !important;
   animation: none !important;
   transform: none !important;
@@ -46,8 +58,7 @@
     filter: none !important;
   }
 
-  // 玻璃胶囊上浏览器默认的焦点环是一圈生硬的黑色，跟材质完全不搭；
-  // 换成与其他控件一致的 focusBorder 细环。
+  // 使用主题焦点色代替浏览器默认黑色焦点环。
   &:focus-visible {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: 2px;
@@ -62,6 +73,7 @@
 .icon {
   width: 14px;
   height: 14px;
+  flex: 0 0 14px;
   border-radius: 3px;
   object-fit: contain;
 }

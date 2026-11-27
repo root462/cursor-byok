@@ -1,14 +1,13 @@
 @use "../../styles/typography" as type;
 
 .root {
-  composes: liquid from global;
-  --liquid-radius: 10px;
-  --liquid-padding: 7px 11px;
-  --liquid-min-width: 0;
-  --liquid-min-height: 0;
-  --liquid-bg: rgba(255, 255, 255, 0.32);
-  --liquid-border: rgba(255, 255, 255, 0.5);
-  --liquid-blur: 6px;
+  // Status is a quiet inset surface, not another floating glass card.
+  border: 1px solid var(--liquid-border);
+  border-radius: 10px;
+  background: var(--liquid-bg);
+  padding: 7px 11px;
+  --liquid-bg: rgba(255, 255, 255, 0.14);
+  --liquid-border: rgba(35, 48, 70, 0.06);
   min-width: 0;
   width: 100%;
   display: flex;
@@ -16,21 +15,50 @@
   justify-content: space-between;
   gap: 10px;
   font-size: type.$font-size-xs;
-
-  &::before {
-    display: none;
-  }
 }
 
 .idle {
   color: var(--vscode-descriptionForeground);
-  --liquid-bg: rgba(255, 255, 255, 0.28);
+  --liquid-bg: rgba(255, 255, 255, 0.14);
 }
 
 .testing {
   color: var(--vscode-textLink-foreground);
+  justify-content: flex-start;
   --liquid-bg: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, rgba(255, 255, 255, 0.32));
   --liquid-border: color-mix(in srgb, var(--vscode-textLink-foreground) 30%, transparent);
+}
+
+.testingRing {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  animation: testing-ring-spin 1.4s linear infinite;
+}
+
+.ringTrack {
+  opacity: 0.16;
+}
+
+.ringArc {
+  stroke-dasharray: 24 57;
+  animation: testing-ring-progress 1.4s ease-in-out infinite;
+}
+
+@keyframes testing-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes testing-ring-progress {
+  0%, 100% { stroke-dasharray: 10 57; }
+  50% { stroke-dasharray: 42 57; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .testingRing,
+  .ringArc {
+    animation: none;
+  }
 }
 
 .success {

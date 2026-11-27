@@ -10,7 +10,8 @@ export function MessageProvider() {
     <div className={styles.region} aria-live="polite" aria-atomic="true">
       {current && (
         <div key={current.id} className={`${styles.message} ${current.leaving ? styles.leaving : ""}`} role="status">
-          {current.content}
+          {current.loading && <span className={styles.spinner} aria-hidden="true" />}
+          <span>{current.content}</span>
         </div>
       )}
     </div>,

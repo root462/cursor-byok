@@ -4,7 +4,7 @@ import { PromptSettingsPanel } from "../customization/PromptSettingsPanel";
 import { SkillSettingsPanel } from "../customization/SkillSettingsPanel";
 import { CursorModelCards, cursorModelGroups, type CursorModelGroup, type CursorModelGrouping } from "./CursorModelCards";
 import { CursorModelEditor, emptyCursorModelDraft, type CursorModelDraft } from "./CursorModelEditor";
-import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
+import type { CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
 import { PageContent } from "../../shell/layout/PageContent";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
@@ -182,7 +182,7 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
     await Promise.all([...activeModelTests.current.keys()].map((modelHash) => cancelModelTest(modelHash)));
   };
 
-  const testModel = async (model: { model_hash: string; display_name: string }, notify = true): Promise<"success" | "failure" | "cancelled"> => {
+  const testModel = async (model: { model_hash: string; display_name: string }, notify: "result" | "progress" | false = "result"): Promise<"success" | "failure" | "cancelled"> => {
     if (activeModelTests.current.has(model.model_hash)) {
       await cancelModelTest(model.model_hash);
       return "cancelled";
@@ -190,19 +190,22 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
     const active = { testId: crypto.randomUUID(), controller: new AbortController(), cancelling: false };
     activeModelTests.current.set(model.model_hash, active);
     setTestingModelHashes((current) => new Set(current).add(model.model_hash));
+    const notificationId = `model-test-${active.testId}`;
+    if (notify === "progress") message(t("正在测试模型 {model}…", { model: model.display_name }), { id: notificationId, loading: true });
     try {
       const result = await api.testClientModel(client, model.model_hash, active.testId, active.controller.signal);
       setModelTestResults((current) => new Map(current).set(model.model_hash, { status: "success", result }));
-      if (notify) message(t("模型 {model} 连通性测试成功（{duration} ms）", { model: model.display_name, duration: result.duration_ms }));
+      if (notify) message(t("模型 {model} 连通性测试成功（{duration} ms）", { model: model.display_name, duration: result.duration_ms }), { id: notificationId });
       return "success";
     } catch (cause) {
       if (active.cancelling || active.controller.signal.aborted) {
         setModelTestResults((current) => new Map(current).set(model.model_hash, { status: "cancelled" }));
+        if (notify) message(t("测试已取消"), { id: notificationId });
         return "cancelled";
       }
       const error = errorText(cause);
       setModelTestResults((current) => new Map(current).set(model.model_hash, { status: "error", error }));
-      if (notify) message(t("连通性测试失败：{error}", { error }), { duration: 5000 });
+      if (notify) message(t("连通性测试失败：{error}", { error }), { id: notificationId, duration: 5000 });
       return "failure";
     } finally {
       if (activeModelTests.current.get(model.model_hash) === active) activeModelTests.current.delete(model.model_hash);
@@ -226,7 +229,7 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
     }
     if (!saved) return;
     setEditing(saved);
-    const result = await testModel(saved);
+    const result = await testModel(saved, "progress");
     if (result === "success") {
       setDraft(null);
       setEditing(null);
@@ -363,7 +366,6 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
     )}
   </div>;
 
-  const editorTestState = editing ? modelTestResults.get(editing.model_hash) : undefined;
   const editorTesting = Boolean(editing && testingModelHashes.has(editing.model_hash));
   const activeGroups = grouping === "provider" ? providerGroups : typeGroups;
   const estimatedModelHeight = grouping === "flat"
@@ -417,7 +419,7 @@ export function ClientSettingsPage({ client }: ClientSettingsPageProps) {
     <Modal open={panel === "skills"} fullHeight title="Skill" closeLabel={t("完成")} closeVariant="primary" onClose={() => setPanel(null)}>
       <SkillSettingsPanel client={client} />
     </Modal>
-    <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={loading || savingAndTesting} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={loading || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editorTesting ? t("取消测试") : t("保存并测试")}</button>}>
+    <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} busy={loading || savingAndTesting} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={loading || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editorTesting ? t("取消测试") : t("保存并测试")}</button>}>
       {draft && <>
         <CursorModelEditor
           draft={draft}

@@ -13,6 +13,9 @@
 }
 
 .message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   max-width: min(520px, calc(100vw - 32px));
   // 轻提示与 Tooltip 同材质：玻璃外观来自 .liquid。
   composes: liquid from global;
@@ -36,6 +39,20 @@
   transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1), transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .leaving {
   opacity: 0;
   transform: translate3d(0, -10px, 0) scale(0.98);
@@ -54,7 +71,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .message {
+  .message,
+  .spinner {
     animation: none;
     transition: none;
   }

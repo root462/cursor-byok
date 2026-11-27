@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { desktopPlatform } from "../shared/native/platform";
+import { LiquidGlassFilter } from "../shared/ui/glass/LiquidGlassFilter";
 import styles from "./AppFrame.module.scss";
 import { AppHeader } from "./AppHeader";
 import { DynamicBackdrop } from "./DynamicBackdrop";
@@ -15,6 +16,7 @@ export function AppFrame() {
   return (
     <div className={[styles.shell, ...platformClasses].filter(Boolean).join(" ")}>
       <DynamicBackdrop />
+      <LiquidGlassFilter />
       <AppHeader platform={platform} nativeDesktop={nativeDesktop} />
       <Outlet />
     </div>

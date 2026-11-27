@@ -45,7 +45,7 @@ export const emptyCursorModelDraft = (): CursorModelDraft => ({
     custom_headers: {},
     anthropic_extra_params_enabled: false,
     anthropic_extra_params: {},
-    context_window_tokens: null,
+    context_window_tokens: 1_000_000,
     max_completion_tokens: null,
     anthropic_max_tokens: null,
     anthropic_thinking_effort: "xhigh",
@@ -156,16 +156,11 @@ export function CursorModelEditor({ draft, modelOptions, discovering, zcodePlugi
   );
   const contextSelectValue = isCustomContext
     ? "custom"
-    : draft.model.context_window_tokens === null
-      ? ""
-      : String(draft.model.context_window_tokens);
+    : String(draft.model.context_window_tokens ?? 1_000_000);
 
   const handleContextSelectChange = (value: string) => {
     if (value === "custom") {
       setCustomContext(true);
-    } else if (value === "") {
-      setCustomContext(false);
-      setModel({ context_window_tokens: null });
     } else {
       setCustomContext(false);
       setModel({ context_window_tokens: Number(value) });
@@ -173,12 +168,11 @@ export function CursorModelEditor({ draft, modelOptions, discovering, zcodePlugi
   };
 
   const contextOptions = [
-    { value: "", label: t("默认 (200K)") },
     { value: "200000", label: "200K" },
     { value: "356000", label: "356K" },
     { value: "500000", label: "500K" },
     { value: "800000", label: "800K" },
-    { value: "1000000", label: "1M" },
+    { value: "1000000", label: t("1M（默认）"), selectedLabel: "1M" },
     { value: "custom", label: t("自定义 Token 数…") },
   ];
 

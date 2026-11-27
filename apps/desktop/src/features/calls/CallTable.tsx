@@ -9,7 +9,7 @@ import styles from "./CallTable.module.scss";
 /** 列宽优先按信息密度设定，未单独配置的扩展列留出可读宽度。 */
 const DEFAULT_COLUMN_WIDTH = 148;
 const COLUMN_WIDTHS: Record<string, number> = {
-  status: 92,
+  status: 116,
   actions: 52,
   display_name: 150,
   usage_cost: 300,

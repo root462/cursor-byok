@@ -6,19 +6,19 @@
  * License: MIT
  */
 
-/* Light Mode */
-
 :root {
   color-scheme: auto;
 }
 
-.liquid {
+/* Dock-like material: a tinted translucent surface, diffused backdrop and
+   a fine illuminated edge. Content stays sharp; only the backdrop is blurred. */
+.liquid,
+.liquid-dark {
   --liquid-radius: 9999px;
   --liquid-padding: 1rem 1.25rem;
-  --liquid-bg: rgba(255, 255, 255, 0.08);
-  --liquid-border: rgba(51, 51, 51, 0.08);
-  --liquid-blur: 8px;
-  --liquid-highlight: rgba(255, 255, 255, 0.85);
+  --liquid-bg: rgba(156, 166, 182, 0.16);
+  --liquid-border: rgba(255, 255, 255, 0.55);
+  --liquid-blur: 20px;
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -27,107 +27,43 @@
   min-width: var(--liquid-min-width, 3.5rem);
   min-height: var(--liquid-min-height, 3rem);
   padding: var(--liquid-padding);
-  border: 1px double var(--liquid-border);
+  border: 1px solid var(--liquid-border);
   border-radius: var(--liquid-radius);
-  background: var(--liquid-bg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.025) 55%, rgba(73, 86, 108, 0.035)),
+    var(--liquid-bg);
   color: rgba(17, 24, 39, 0.92);
   text-decoration: none;
   vertical-align: middle;
   box-sizing: border-box;
   overflow: hidden;
-  -webkit-backdrop-filter: blur(calc(var(--liquid-blur) * 0.35)) saturate(160%);
-  backdrop-filter: blur(calc(var(--liquid-blur) * 0.35)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--liquid-blur)) saturate(150%);
+  backdrop-filter: blur(var(--liquid-blur)) saturate(150%);
   box-shadow:
-    inset 1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.92),
-    inset -1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.9),
-    inset 0 0 3px rgba(15, 23, 42, 0.35),
-    0 16px 32px rgba(15, 23, 42, 0.14);
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -1px 0 rgba(48, 60, 80, 0.08),
+    0 0 0 1px rgba(48, 60, 80, 0.07),
+    0 4px 12px rgba(32, 44, 65, 0.06),
+    0 12px 28px -12px rgba(32, 44, 65, 0.18);
 }
 
-.liquid::before,
-.liquid::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-  border-radius: inherit;
+/* Refraction is limited to large surfaces, not nested buttons/status labels. */
+.liquid-refractive {
+  --liquid-refraction: blur(0px);
+  --liquid-bg: rgba(255, 255, 255, 0.08);
+  --liquid-blur: 1.5px;
+  -webkit-backdrop-filter: var(--liquid-refraction) blur(var(--liquid-blur)) saturate(140%);
+  backdrop-filter: var(--liquid-refraction) blur(var(--liquid-blur)) saturate(140%);
 }
 
-.liquid::before {
-  top: 35%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
-  border: 1px double rgba(0, 0, 0, 0.9);
-  filter: blur(var(--liquid-blur));
-}
-
-.liquid::after {
-  inset: 0;
-}
-
-.liquid > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* Dark Mode */
-
-.liquid-dark {
-  --liquid-radius: 9999px;
-  --liquid-padding: 1rem 1.25rem;
-  --liquid-bg: rgba(18, 18, 28, 0.55);
-  --liquid-border: rgba(148, 163, 184, 0.22);
-  --liquid-blur: 12px;
-  --liquid-highlight: rgba(226, 232, 240, 0.75);
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-width: var(--liquid-min-width, 3.5rem);
-  min-height: var(--liquid-min-height, 3rem);
-  padding: var(--liquid-padding);
-  border: 1px double var(--liquid-border);
-  border-radius: var(--liquid-radius);
-  color: rgba(226, 232, 240, 0.95);
-  text-decoration: none;
-  vertical-align: middle;
-  box-sizing: border-box;
-  overflow: hidden;
-  -webkit-backdrop-filter: blur(calc(var(--liquid-blur) * 0.4)) saturate(180%) brightness(1.05);
-  backdrop-filter: blur(calc(var(--liquid-blur) * 0.4)) saturate(180%) brightness(1.05);
-  box-shadow:
-    inset 1.5px -1.5px 1px -1px var(--liquid-highlight),
-    inset -1.5px 1.5px 1px -1px rgba(226, 232, 240, 0.65),
-    inset 0 0 12px rgba(2, 6, 23, 0.6),
-    0 8px 24px rgba(2, 6, 23, 0.45),
-    0 2px 6px rgba(2, 6, 23, 0.3);
-}
-
-.liquid-dark::before,
-.liquid-dark::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-  border-radius: inherit;
-}
-
-.liquid-dark::before {
-  top: 35%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
-  border: 1px double rgba(226, 232, 240, 0.5);
-  filter: blur(var(--liquid-blur));
-}
-
-.liquid-dark::after {
-  inset: 0;
-}
-
+.liquid > *,
 .liquid-dark > * {
   position: relative;
   z-index: 1;
+}
+
+.liquid-dark {
+  --liquid-bg: rgba(35, 41, 52, 0.38);
+  --liquid-border: rgba(255, 255, 255, 0.22);
+  color: rgba(226, 232, 240, 0.95);
 }

@@ -9,19 +9,27 @@ export type CursorModelTestState =
   | { status: "error"; error: string }
   | { status: "cancelled" };
 
-export function CursorModelTestResult({ state, testing = false, compact = false }: {
+export function CursorModelTestResult({ state, note, testing = false, compact = false }: {
   state?: CursorModelTestState;
+  note: string;
   testing?: boolean;
-  /** 列表行内的紧凑徽标形态:未测试时不渲染,详情放入悬浮提示。 */
+  /** 列表行内的紧凑徽标形态。 */
   compact?: boolean;
 }) {
   if (testing) {
-    return compact
-      ? <span className={`${styles.compact} ${styles.testing}`}>{t("测试中…")}</span>
-      : <div className={`${styles.root} ${styles.testing}`}><span className={styles.summary}>{t("测试中…")}</span></div>;
+    return <span className={`${compact ? styles.compact : styles.root} ${styles.testing}`} role="status">
+      <svg className={styles.testingRing} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle className={styles.ringTrack} cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" />
+        <circle className={styles.ringArc} cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+      <span className={styles.summary}>{t("测试中…")}</span>
+    </span>;
   }
   if (!state) {
-    return compact ? null : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{t("未测试")}</span></div>;
+    const summary = note.trim();
+    return compact
+      ? <span className={`${styles.compact} ${styles.idle}`}>{summary}</span>
+      : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{summary}</span></div>;
   }
   if (state.status === "cancelled") {
     return compact

@@ -1,30 +1,43 @@
 .root {
+  --track-width: 40px;
+  --thumb-size: 18px;
+  --thumb-inset: 3px;
+  --thumb-offset: 0px;
+  --thumb-stretch: 1;
+  --switch-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
   flex: 0 0 auto;
-  width: 40px;
-  height: 24px;
+  width: var(--track-width);
+  height: calc(var(--thumb-size) + 2 * var(--thumb-inset));
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border: 0;
   border-radius: 9999px;
-  background: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.16);
+  appearance: none;
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, var(--vscode-editorWidget-background));
+  box-shadow:
+    inset 0 1px 2px rgb(15 23 42 / 12%),
+    inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
   cursor: pointer;
   box-sizing: border-box;
-  transition: background-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 220ms ease, box-shadow 220ms ease;
 
   &[data-checked] {
+    --thumb-offset: calc(var(--track-width) - var(--thumb-size) - 2 * var(--thumb-inset));
     background: var(--vscode-button-background);
-    border-color: rgba(255, 255, 255, 0.3);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.35),
-      0 3px 8px -1px color-mix(in srgb, var(--vscode-button-background) 50%, transparent);
+      inset 0 1px 2px rgb(15 23 42 / 8%),
+      inset 0 0 0 1px rgb(15 23 42 / 4%);
+  }
+
+  &:active:not(:disabled) {
+    --thumb-stretch: 1.18;
   }
 
   &:focus-visible {
     outline: 2px solid var(--vscode-focusBorder);
-    outline-offset: 2px;
+    outline-offset: 3px;
   }
 
   &:disabled {
@@ -32,22 +45,37 @@
     cursor: not-allowed;
   }
 
-  span {
+  > span {
     position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
+    top: var(--thumb-inset);
+    left: var(--thumb-inset);
+    width: var(--thumb-size);
+    height: var(--thumb-size);
+    border-radius: 9999px;
     background: #ffffff;
     box-shadow:
-      0 2px 5px rgba(15, 23, 42, 0.22),
-      0 1px 2px rgba(15, 23, 42, 0.12);
-    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+      0 2px 4px rgb(15 23 42 / 18%),
+      0 0 0 0.5px rgb(15 23 42 / 5%);
+    transform: translateX(var(--thumb-offset)) scaleX(var(--thumb-stretch));
+    transform-origin: left center;
+    transition: transform 420ms var(--switch-spring), box-shadow 220ms ease;
     pointer-events: none;
   }
 
-  &[data-checked] span {
-    transform: translateX(16px);
+  &[data-checked] > span {
+    transform-origin: right center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    --thumb-stretch: 1;
+
+    &,
+    > span {
+      transition: none;
+    }
+
+    &:active:not(:disabled) {
+      --thumb-stretch: 1;
+    }
   }
 }

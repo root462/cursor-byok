@@ -146,7 +146,7 @@ function ModelListRow({
         <span className={styles.modelRowModelId}>{model.model_id}</span>
       </div>
     </div>
-    <CursorModelTestResult compact state={result} testing={testing} />
+    <CursorModelTestResult compact state={result} note={model.tooltip_data} testing={testing} />
     <div className={styles.modelCardActions}>
       <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
       <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={onEdit} />
@@ -194,7 +194,7 @@ function ModelGrid({
             </span>
           </div>
           <div className={styles.modelCardTest}>
-            <CursorModelTestResult state={result} testing={testing} />
+            <CursorModelTestResult state={result} note={model.tooltip_data} testing={testing} />
           </div>
           <div className={styles.modelCardActions}>
             <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={() => onTest(model)} />

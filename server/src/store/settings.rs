@@ -85,10 +85,10 @@ pub struct TokenPricingSettings {
 impl Default for TokenPricingSettings {
     fn default() -> Self {
         Self {
-            input_per_million: 5.0,
-            output_per_million: 25.0,
-            cache_read_per_million: 0.5,
-            cache_write_per_million: 6.25,
+            input_per_million: 0.0,
+            output_per_million: 0.0,
+            cache_read_per_million: 0.0,
+            cache_write_per_million: 0.0,
             models: std::collections::BTreeMap::new(),
         }
     }
@@ -964,6 +964,21 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let url = format!("sqlite://{}", directory.path().join("test.db").display());
         let store = Store::connect(&url).await.unwrap();
+
+        let defaults = TokenPricingSettings::default();
+        assert_eq!(
+            defaults.default_pricing(),
+            super::ModelPricing {
+                input_per_million: 0.0,
+                output_per_million: 0.0,
+                cache_read_per_million: 0.0,
+                cache_write_per_million: 0.0,
+            }
+        );
+        assert_eq!(
+            defaults.effective_pricing("cursor", None, "unknown-custom-model"),
+            defaults.default_pricing()
+        );
 
         assert_eq!(
             store.pricing_settings().await.unwrap(),
